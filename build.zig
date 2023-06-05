@@ -4,6 +4,7 @@ const glfw = @import("libs/mach-glfw/build.zig");
 const gpu_dawn_sdk = @import("libs/mach-gpu-dawn/sdk.zig");
 const gpu_sdk = @import("libs/mach-gpu/sdk.zig");
 const system_sdk = @import("libs/mach-glfw/system_sdk.zig");
+const zmath = @import("libs/zmath/build.zig");
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
@@ -29,6 +30,12 @@ pub fn build(b: *std.Build) !void {
     exe.addModule("gpu", gpu.module(b));
     try gpu.link(b, exe, .{ .gpu_dawn_options = gpu_dawn_options });
 
+    const zmath_module = b.createModule(.{
+        .source_file = .{ .path = "libs/zmath/src/zmath.zig" },
+        .dependencies = &.{},
+    });
+    exe.addModule("zmath", zmath_module);
+    
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
