@@ -92,12 +92,41 @@ inline fn requestAdapterCallback(
         .message = message,
     };
 }
+
 fn glfwErrorCallback(error_code: glfw.ErrorCode, description: [:0]const u8) void {
     std.log.err("glfw: {}: {s}\n", .{ error_code, description });
 }
 
+inline fn deviceLoggingCallback(
+    context: *usize,
+    typ: gpu.LoggingType, 
+    message:[*:0]const u8
+) void {
+    _ = context;
+    switch (typ) {
+        .verbose => wgpu_log.debug("{s}", .{message}),
+        .info => wgpu_log.info("{s}", .{message}),
+        .warning => wgpu_log.warn("{s}", .{message}),
+        .err => wgpu_log.err("{s}", .{message})
+    }
+}
+
+inline fn deviceErrorCallback(
+    context: *usize,
+    typ: gpu.ErrorType,
+    message: [*:0]const u8
+) void {
+    _ = typ;
+    _ = context;
+    wgpu_log.err("{s}", .{message});
+    std.process.exit(1);
+}
+
 // MARK: Main
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
     gpu.Impl.init();
 
     glfw_log.info("initializing GLFW...", .{});
@@ -123,25 +152,32 @@ pub fn main() !void {
 
     var response: ?RequestAdapterResponse = null;
     instance.requestAdapter(&.{}, &response, requestAdapterCallback);
-
+    
     if (response == null) {
         wgpu_log.err("RequestAdapterResponse found null", .{});
         std.process.exit(1);
     }
 
+    defer response.?.adapter.release();
+    // MARK: where we'll set limits
     var limits: gpu.SupportedLimits = .{};
     _ = response.?.adapter.getLimits(&limits);
     wgpu_log.info("{?}", .{limits.limits});
 
     var device: ?*gpu.Device = response.?.adapter.createDevice(null);
+
     if (device == null) {
         wgpu_log.err("Failed to create device.", .{});
         std.process.exit(1);
     }
 
+    var num: usize = 0;
+    device.?.setLoggingCallback(&num, deviceLoggingCallback);
+    device.?.setUncapturedErrorCallback(&num, deviceErrorCallback);
+
     var surface = createSurfaceForWindow(instance, window, comptime detectGLFWOptions());
 
-    var renderer: Renderer = Renderer.init(device.?, surface);
+    var renderer: Renderer = Renderer.init(allocator, device.?, surface);
     defer renderer.deinit();
 
     while (!window.shouldClose()) {
