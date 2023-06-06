@@ -1,6 +1,8 @@
 const std = @import("std");
 const gpu = @import("gpu");
 
+const Object = @import("obj_loader.zig").Object;
+
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
 
@@ -10,8 +12,15 @@ swapchain: *gpu.SwapChain,
 queue: *gpu.Queue,
 pipeline: *gpu.RenderPipeline,
 
+vertex_buffer: *gpu.Buffer,
+vertex_count: usize,
+index_buffer: *gpu.Buffer,
+index_count: usize,
+
 pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) Renderer {
     log.info("initializng renderer...", .{});
+    
+    const queue = device.getQueue();
 
     // Swapchain
     var swapchain = device.createSwapChain(surface, &gpu.SwapChain.Descriptor {
@@ -24,6 +33,53 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .format = gpu.Texture.Format.bgra8_unorm
     });
 
+    var model = Object.createFromFile(gpa, "resources/triangle.obj");
+    _ = model;
+    
+    // Write vertex and index buffers
+    var vertex_buffer = device.createBuffer(&.{
+        .usage = gpu.Buffer.UsageFlags {
+            .vertex = true,
+            .copy_dst = true
+        },
+        .size = 24 * @sizeOf(f32)
+    });
+    var vertex_count: usize = 8;
+    var slice = [_]f32{
+        0.999999, -0.999999, -0.999999,
+        0.999999, -0.999999, 0.999999,
+        -0.999999, -0.999999, 0.999999,
+        -0.999999, -0.999999, -0.999999,
+        0.999999, 0.999999, -0.999999,
+        0.999999, 0.999999, 0.999999,
+        -0.999999, 0.999999, 0.999999,
+        -0.999999, 0.999999, -0.999999
+    };
+    queue.writeBuffer(vertex_buffer, 0, &slice);
+
+    var index_buffer = device.createBuffer(&.{
+        .usage = gpu.Buffer.UsageFlags {
+            .index = true,
+            .copy_dst = true
+        },
+        .size = 36 * @sizeOf(u32)
+    });
+    var index_count: usize = 36;
+    var index_slice = [_]u32{
+        1, 2, 3,
+        7, 6, 5,
+        4, 5, 1,
+        5, 6, 2,
+        2, 6, 7,
+        0, 3, 7,
+        0, 1, 3,
+        4, 7, 5,
+        0, 4, 1,
+        1, 5, 2,
+        3, 2, 7,
+        4, 0, 7,
+    };
+    queue.writeBuffer(index_buffer, 0, &index_slice);
 
     // Render pipeline
     // FIXME: this cannot be the best way to add a sentinel
@@ -43,7 +99,19 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{})),
         .vertex = gpu.VertexState.init(.{
             .module = shader_module,
-            .entry_point = "vs_main"
+            .entry_point = "vs_main",
+            .buffers = &.{
+                gpu.VertexBufferLayout.init(.{
+                    .array_stride = 3 * @sizeOf(f32),
+                    .attributes = &.{
+                        gpu.VertexAttribute {
+                            .format = gpu.VertexFormat.float32x3,
+                            .offset = 0,
+                            .shader_location = 0
+                        }
+                    }
+                })
+            }
         }),
         .fragment = &gpu.FragmentState.init(.{
             .module = shader_module,
@@ -69,8 +137,12 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .device = device, 
         .surface = surface,
         .swapchain = swapchain,
-        .queue = device.getQueue(),
-        .pipeline = pipeline 
+        .queue = queue,
+        .pipeline = pipeline,
+        .vertex_buffer = vertex_buffer,
+        .vertex_count = vertex_count,
+        .index_buffer = index_buffer,
+        .index_count = index_count
     };
 
 }
@@ -90,12 +162,15 @@ pub fn update(this: *Renderer) void {
                 .store_op = gpu.StoreOp.store,
                 .view = next_texture
             }
-        }
+        },
     }));
     defer renderPass.release();
 
     renderPass.setPipeline(this.pipeline);
-    renderPass.draw(3, 1, 0, 0);
+    renderPass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 3 * @sizeOf(f32));
+    renderPass.setIndexBuffer(this.index_buffer, gpu.IndexFormat.uint32, 0, this.index_count * @sizeOf(u32));
+
+    renderPass.drawIndexed(36, 1, 0, 0, 0);
     renderPass.end();
         
     var commands = encoder.finish(&.{});
