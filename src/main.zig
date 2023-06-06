@@ -1,12 +1,14 @@
 const std = @import("std");
 const glfw = @import("glfw");
 const gpu = @import("gpu");
+const zmath = @import("zmath");
 
 const Renderer = @import("renderer.zig");
+const Object = @import("obj_loader.zig").Object;
 
 // MARK: Loggging
 pub const std_options = struct {
-    pub const log_level = .info;
+    pub const log_level = .debug;
     pub const logFn = log;
 };
 
@@ -18,7 +20,7 @@ fn log(
 ) void {
     const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
     const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-
+    
     std.debug.getStderrMutex().lock();
     defer std.debug.getStderrMutex().unlock();
     const stderr = std.io.getStdErr().writer();

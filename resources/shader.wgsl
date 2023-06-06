@@ -1,23 +1,20 @@
+struct VertexInput {
+    @location(0) position: vec3<f32>
+}
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>
 }
 
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
+fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
+    var ratio: f32 = 640.0 / 480.0;
 
-	if (in_vertex_index == 0u) {
-		out.position = vec4<f32>(-0.5, -0.5, 0.0, 1.0);
-        out.color = vec3<f32>(1.0, 0.0, 0.0);
-	} else if (in_vertex_index == 1u) {
-		out.position = vec4<f32>(0.5, -0.5, 0.0, 1.0);
-        out.color = vec3<f32>(0.0, 1.0, 0.0);
-	} else {
-		out.position = vec4<f32>(0.0, 0.5, 0.0, 1.0);
-        out.color = vec3<f32>(0.0, 0.0, 1.0);
-	}
-    
+    out.color = vec3<f32>(1.0,0.0,0.0);
+    out.position = vec4<f32>(in.position.xyz, 1.0);
+
 	return out;
 }
 
