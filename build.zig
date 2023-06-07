@@ -4,6 +4,7 @@ const glfw = @import("libs/mach-glfw/build.zig");
 const gpu_dawn_sdk = @import("libs/mach-gpu-dawn/sdk.zig");
 const gpu_sdk = @import("libs/mach-gpu/sdk.zig");
 const system_sdk = @import("libs/mach-glfw/system_sdk.zig");
+const model3d_sdk = @import("libs/mach-model3d/build.zig");
 const zmath = @import("libs/zmath/build.zig");
 
 // Although this function looks imperative, note that its job is to
@@ -36,6 +37,9 @@ pub fn build(b: *std.Build) !void {
     });
     exe.addModule("zmath", zmath_module);
     
+    exe.addModule("model3d", model3d_sdk.module(b));
+    model3d_sdk.link(b, exe, target);
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
