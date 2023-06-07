@@ -4,7 +4,7 @@ const gpu = @import("gpu");
 const zmath = @import("zmath");
 
 const Renderer = @import("renderer.zig");
-const Object = @import("obj_loader.zig").Object;
+const Model = @import("loader.zig").Model;
 
 // MARK: Loggging
 pub const std_options = struct {

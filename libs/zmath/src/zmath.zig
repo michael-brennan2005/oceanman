@@ -1457,17 +1457,7 @@ test "zmath.modAngle" {
 }
 
 pub inline fn mulAdd(v0: anytype, v1: anytype, v2: anytype) @TypeOf(v0, v1, v2) {
-    const T = @TypeOf(v0, v1, v2);
-    if (@import("zmath_options").enable_cross_platform_determinism) {
-        return v0 * v1 + v2; // Compiler will generate mul, add sequence (no fma even if the target supports it).
-    } else {
-        if (cpu_arch == .x86_64 and has_avx and has_fma) {
-            return @mulAdd(T, v0, v1, v2);
-        } else {
-            // NOTE(mziulek): On .x86_64 without HW fma instructions @mulAdd maps to really slow code!
-            return v0 * v1 + v2;
-        }
-    }
+    return v0 * v1 + v2;
 }
 
 fn sin32xN(v: anytype) @TypeOf(v) {
