@@ -1,8 +1,10 @@
 const std = @import("std");
 const gpu = @import("gpu");
 const zmath = @import("zmath");
+const glfw = @import("glfw");
 
 const Mat = zmath.Mat;
+const Vec = zmath.Vec;
 
 const Model = @import("loader.zig").Model;
 
@@ -10,6 +12,49 @@ const Uniforms = struct {
     perspective: Mat,
     view: Mat,
     model: Mat
+};
+
+const Camera = struct {
+    right_click: bool = false,
+    first_mouse: bool = true,
+    yaw: f32 = 0.0,
+    pitch: f32 = 0.0,
+    last_x: f32 = 0.0,
+    last_y: f32 = 0.0,
+    
+    forward: bool = false,
+    backward: bool = false,
+    left: bool = false,
+    right: bool = false,
+    upp: bool = false,
+    down: bool = false,
+
+    position: Vec = zmath.f32x4(0.0, 0.0, 3.0, 1.0),
+    front: Vec = zmath.f32x4(0.0, 0.0, -1.0, 0.0),
+    up: Vec = zmath.f32x4(0.0, 1.0, 0.0, 1.0),
+
+    pub fn update(this: *Camera, dt: f32) void {
+        const cameraSpeed: f32 = 2.5;
+        if (this.forward) {
+            // this shouldn't be a plus (should be -), could be weird LH vs RH issue
+            this.position += this.front * @splat(4, cameraSpeed * dt);
+        }
+        if (this.backward) {
+            this.position -= this.front * @splat(4, cameraSpeed * dt);
+        }
+        if (this.left) {
+            this.position -= zmath.normalize3(zmath.cross3(this.up, this.front)) * @splat(4, cameraSpeed * dt);
+        }
+        if (this.right) {
+            this.position += zmath.normalize3(zmath.cross3(this.up, this.front)) * @splat(4, cameraSpeed * dt);
+        }
+        if (this.upp) {
+            this.position -= this.up * @splat(4, cameraSpeed * dt); 
+        }
+        if (this.down) {
+            this.position += this.up * @splat(4, cameraSpeed * dt);
+        }
+    }
 };
 
 const Renderer = @This();
@@ -21,6 +66,8 @@ swapchain: *gpu.SwapChain,
 queue: *gpu.Queue,
 pipeline: *gpu.RenderPipeline,
 
+uniforms: Uniforms,
+uniform_buffer: *gpu.Buffer,
 uniform_binding: *gpu.BindGroup,
 
 depth_texture: *gpu.Texture,
@@ -30,6 +77,114 @@ vertex_count: usize,
 index_buffer: *gpu.Buffer,
 index_count: usize,
 
+camera: Camera,
+
+// MARK: input
+pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
+    switch (key) {
+        glfw.Key.w => {
+            this.camera.forward = true;                    
+        },
+        glfw.Key.a => {
+            this.camera.left = true;
+        },
+        glfw.Key.s => {
+            this.camera.backward = true;
+        },
+        glfw.Key.d => {
+            this.camera.right = true;
+        },
+        glfw.Key.q => {
+            this.camera.upp = true;
+        },
+        glfw.Key.e => {
+            this.camera.down = true;
+        },
+        else => return
+    }
+}
+
+pub fn onKeyUp(this: *Renderer, key: glfw.Key) void {
+    switch (key) {
+        glfw.Key.w => {
+            this.camera.forward = false;                    
+        },
+        glfw.Key.a => {
+            this.camera.left = false;
+        },
+        glfw.Key.s => {
+            this.camera.backward = false;
+        },
+        glfw.Key.d => {
+            this.camera.right = false;
+        },
+        glfw.Key.q => {
+            this.camera.upp = false;
+        },
+        glfw.Key.e => {
+            this.camera.down = false;
+        },
+        else => return
+    }
+}
+
+pub fn onMouseButtonDown(this: *Renderer, window: *const glfw.Window, key: glfw.MouseButton) void {
+    if (key == glfw.MouseButton.right) {
+        window.setInputModeCursor(glfw.Window.InputModeCursor.disabled);
+        this.camera.right_click = true;
+    }
+}
+
+pub fn onMouseButtonUp(this: *Renderer, window: *const glfw.Window, key: glfw.MouseButton) void {
+    if (key == glfw.MouseButton.right) {
+        window.setInputModeCursor(glfw.Window.InputModeCursor.normal);
+        this.camera.right_click = false;
+    }
+}
+
+pub fn onMouseMove(this: *Renderer, x: f32, y: f32) void {
+    if (!this.camera.right_click) {
+        this.camera.first_mouse = true;
+        return;
+    }
+
+    if (this.camera.first_mouse) {
+        this.camera.last_x = @floatCast(f32, x);
+        this.camera.last_y = @floatCast(f32, y);
+        this.camera.first_mouse = false;
+    }
+
+    var x_offset: f32 = x - this.camera.last_x;
+    var y_offset: f32 = y - this.camera.last_y;
+    this.camera.last_x = x;
+    this.camera.last_y = y;
+
+    var sensitivity: f32 = 0.1;
+    x_offset *= sensitivity;
+    y_offset *= sensitivity;
+
+    this.camera.yaw -= x_offset;
+    this.camera.pitch -= y_offset;
+
+    if (this.camera.pitch > 89.0) {
+        this.camera.pitch = 89.0;
+    } 
+
+    if (this.camera.pitch < -89.0) {
+        this.camera.pitch = -89.0;
+    }
+
+    const radians = std.math.degreesToRadians;
+    var dir = zmath.f32x4(
+        @cos(radians(f32, this.camera.yaw)) * @cos(radians(f32, this.camera.pitch)),
+        @sin(radians(f32, this.camera.pitch)),
+        @sin(radians(f32, this.camera.yaw)) * @cos(radians(f32, this.camera.pitch)),
+        0.0
+    );
+    this.camera.front = zmath.normalize3(dir);
+}
+
+// MARK: init
 pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) Renderer {
     log.info("initializng renderer...", .{});
     
@@ -70,9 +225,9 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
 
     // Write uniform buffers and binding group.
     var uniforms = Uniforms {
-        .model = zmath.mul(zmath.translation(0.0, 0.0, 0.0), zmath.scaling(0.5,0.5,0.5)),
-        .view = zmath.lookAtLh(zmath.f32x4(2.0, 0.0, 3.0, 1.0), zmath.f32x4(0.0, 0.0, 0.0, 1.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0) ),
-        .perspective = zmath.perspectiveFovLh(0.4, ratio, 0.01, 100.0)
+        .model = zmath.identity(),
+        .view = zmath.identity(),
+        .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0)
     };
     var uniform_buffer = device.createBuffer(&.{
         .usage = gpu.Buffer.UsageFlags {
@@ -189,17 +344,29 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .swapchain = swapchain,
         .queue = queue,
         .pipeline = pipeline,
+        .uniforms = uniforms,
+        .uniform_buffer = uniform_buffer,
         .uniform_binding = uniform_binding,
         .depth_texture = depth_texture,
         .vertex_buffer = vertex_buffer,
         .vertex_count = model.vertices.len,
         .index_buffer = index_buffer,
-        .index_count = model.indices.len
+        .index_count = model.indices.len,
+        .camera = .{}
     };
 
 }
 
-pub fn update(this: *Renderer) void {
+// MARK: update
+pub fn update(this: *Renderer, dt: f32) void {
+    this.camera.update(dt);
+    this.uniforms.view = zmath.lookAtLh(this.camera.position, this.camera.position + this.camera.front, this.camera.up);
+
+    var uniforms_slice: []Uniforms = undefined;
+    uniforms_slice.len = 1;
+    uniforms_slice.ptr = @ptrCast([*]Uniforms, &this.uniforms);
+    this.queue.writeBuffer(this.uniform_buffer, 0, uniforms_slice);
+    
     var next_texture = this.swapchain.getCurrentTextureView();
     defer next_texture.release();
 
@@ -248,7 +415,9 @@ pub fn update(this: *Renderer) void {
     this.swapchain.present();
 }
 
+// MARK: deinit
 pub fn deinit(this: *Renderer) void {
     _ = this;
     log.info("deinitializing renderer", .{});
 }
+

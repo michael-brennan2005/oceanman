@@ -8,7 +8,7 @@ const Model = @import("loader.zig").Model;
 
 // MARK: Loggging
 pub const std_options = struct {
-    pub const log_level = .debug;
+    pub const log_level = .info;
     pub const logFn = log;
 };
 
@@ -125,6 +125,40 @@ inline fn deviceErrorCallback(
 }
 
 // MARK: Main
+var renderer_handle: ?*Renderer = null;
+
+pub fn glfwKeyCallback(window: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void {
+    _ = mods;
+    _ = scancode;
+    _ = window;
+    if (renderer_handle) |renderer| {
+        if (action == glfw.Action.press) {
+            renderer.onKeyDown(key);
+        } else if (action == glfw.Action.release) {
+            renderer.onKeyUp(key);
+        }
+    }
+}
+
+pub fn glfwMouseCallback(window: glfw.Window, button: glfw.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
+    _ = mods;
+    if (renderer_handle) |renderer| {
+        if (action == glfw.Action.press) {
+            // FIXME: code smell having to pass in window
+            renderer.onMouseButtonDown(&window, button);
+        } else {
+            renderer.onMouseButtonUp(&window, button);
+        }
+    }
+}
+
+pub fn glfwCursorCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
+    _ = window;
+    if (renderer_handle) |renderer| {
+        renderer.onMouseMove(@floatCast(f32, xpos), @floatCast(f32, ypos));
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -180,11 +214,23 @@ pub fn main() !void {
     var surface = createSurfaceForWindow(instance, window, comptime detectGLFWOptions());
 
     var renderer: Renderer = Renderer.init(allocator, device.?, surface);
+    renderer_handle = &renderer;
     defer renderer.deinit();
 
+    window.setKeyCallback(glfwKeyCallback);
+    window.setMouseButtonCallback(glfwMouseCallback);
+    window.setCursorPosCallback(glfwCursorCallback);
+       
+    var delta_time: f32 = 0.0;
+    var last_frame: f32 = @floatCast(f32, glfw.getTime());
+    
     while (!window.shouldClose()) {
         glfw.pollEvents();
 
-        renderer.update();
+        renderer.update(delta_time);
+        const current_time = @floatCast(f32, glfw.getTime());
+        delta_time = current_time - last_frame;
+        last_frame = current_time;
+
     }
 }
