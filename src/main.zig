@@ -118,9 +118,8 @@ inline fn deviceErrorCallback(
     typ: gpu.ErrorType,
     message: [*:0]const u8
 ) void {
-    _ = typ;
     _ = context;
-    wgpu_log.err("{s}", .{message});
+    wgpu_log.err("{s} ({?})", .{message, typ});
     std.process.exit(1);
 }
 
@@ -156,6 +155,13 @@ pub fn glfwCursorCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
     _ = window;
     if (renderer_handle) |renderer| {
         renderer.onMouseMove(@floatCast(f32, xpos), @floatCast(f32, ypos));
+    }
+}
+
+pub fn glfwResizeCallback(window: glfw.Window, width: u32, height: u32) void {
+    _ = window;
+    if (renderer_handle) |renderer| {
+        renderer.onWindowResize(width, height);
     }
 }
 
@@ -220,7 +226,8 @@ pub fn main() !void {
     window.setKeyCallback(glfwKeyCallback);
     window.setMouseButtonCallback(glfwMouseCallback);
     window.setCursorPosCallback(glfwCursorCallback);
-       
+    window.setFramebufferSizeCallback(glfwResizeCallback);
+    
     var delta_time: f32 = 0.0;
     var last_frame: f32 = @floatCast(f32, glfw.getTime());
     

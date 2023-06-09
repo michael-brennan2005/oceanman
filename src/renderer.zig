@@ -11,7 +11,8 @@ const Model = @import("loader.zig").Model;
 const Uniforms = struct {
     perspective: Mat,
     view: Mat,
-    model: Mat
+    model: Mat,
+    ratio: f32
 };
 
 const Camera = struct {
@@ -60,6 +61,10 @@ const Camera = struct {
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
 
+width: u32 = 640,
+height: u32 = 480,
+needs_resizing: bool = false,
+
 device: *gpu.Device,
 surface: *gpu.Surface,
 swapchain: *gpu.SwapChain,
@@ -71,6 +76,7 @@ uniform_buffer: *gpu.Buffer,
 uniform_binding: *gpu.BindGroup,
 
 depth_texture: *gpu.Texture,
+depth_texture_view: *gpu.TextureView,
 
 vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
@@ -79,7 +85,7 @@ index_count: usize,
 
 camera: Camera,
 
-// MARK: input
+// MARK: input/glfw callbacks
 pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
     switch (key) {
         glfw.Key.w => {
@@ -184,6 +190,69 @@ pub fn onMouseMove(this: *Renderer, x: f32, y: f32) void {
     this.camera.front = zmath.normalize3(dir);
 }
 
+pub fn onWindowResize(this: *Renderer, width: u32, height: u32) void {
+    this.width = width;
+    this.height = height;
+    this.needs_resizing = true;
+}
+
+pub fn updateWindow(this: *Renderer) void {
+    this.needs_resizing = false;
+
+    // swapchain
+    this.swapchain.release();
+    this.swapchain = this.device.createSwapChain(this.surface, &gpu.SwapChain.Descriptor {
+        .width = this.width,
+        .height = this.height,
+        .usage = gpu.Texture.UsageFlags {
+            .render_attachment = true
+        },
+        .present_mode = gpu.PresentMode.fifo,
+        .format = gpu.Texture.Format.bgra8_unorm
+    });
+
+    // depth_buffer
+    this.depth_texture.destroy();
+    this.device.tick();
+    this.depth_texture.release();
+    this.depth_texture = this.device.createTexture(&gpu.Texture.Descriptor.init(.{
+        .usage = gpu.Texture.UsageFlags {
+            .render_attachment = true
+        },
+        .dimension = gpu.Texture.Dimension.dimension_2d,
+        .format = gpu.Texture.Format.depth24_plus,
+        .size = gpu.Extent3D {
+            .depth_or_array_layers = 1,
+            .width = this.width,
+            .height = this.height
+        },
+        .view_formats = &.{
+            gpu.Texture.Format.depth24_plus
+        },
+    }));
+    
+    this.depth_texture_view.release();
+    this.depth_texture_view = this.depth_texture.createView(&gpu.TextureView.Descriptor {
+        .aspect = gpu.Texture.Aspect.depth_only,
+        .base_array_layer = 0,
+        .array_layer_count = 1,
+        .base_mip_level = 0,
+        .mip_level_count = 1,
+        .dimension = gpu.TextureView.Dimension.dimension_2d,
+        .format = gpu.Texture.Format.depth24_plus
+    });
+
+    // uniform
+    const ratio = @intToFloat(f32, this.width) / @intToFloat(f32, this.height);
+    this.uniforms.ratio = ratio;
+    this.uniforms.perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0);
+
+    var uniforms_slice: []Uniforms = undefined;
+    uniforms_slice.len = 1;
+    uniforms_slice.ptr = @ptrCast([*]Uniforms, &this.uniforms);
+    this.queue.writeBuffer(this.uniform_buffer, 0, uniforms_slice); 
+}
+
 // MARK: init
 pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) Renderer {
     log.info("initializng renderer...", .{});
@@ -225,6 +294,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
 
     // Write uniform buffers and binding group.
     var uniforms = Uniforms {
+        .ratio = ratio,
         .model = zmath.identity(),
         .view = zmath.identity(),
         .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0)
@@ -277,6 +347,16 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
             gpu.Texture.Format.depth24_plus
         },
     }));
+
+    const depth_texture_view = depth_texture.createView(&gpu.TextureView.Descriptor {
+        .aspect = gpu.Texture.Aspect.depth_only,
+        .base_array_layer = 0,
+        .array_layer_count = 1,
+        .base_mip_level = 0,
+        .mip_level_count = 1,
+        .dimension = gpu.TextureView.Dimension.dimension_2d,
+        .format = gpu.Texture.Format.depth24_plus
+    });
 
     // Render pipeline
     // FIXME: this cannot be the best way to add a sentinel
@@ -348,6 +428,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .uniform_buffer = uniform_buffer,
         .uniform_binding = uniform_binding,
         .depth_texture = depth_texture,
+        .depth_texture_view = depth_texture_view,
         .vertex_buffer = vertex_buffer,
         .vertex_count = model.vertices.len,
         .index_buffer = index_buffer,
@@ -359,6 +440,11 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
 
 // MARK: update
 pub fn update(this: *Renderer, dt: f32) void {
+    this.device.tick();
+
+    if (this.needs_resizing) {
+        this.updateWindow();
+    }
     this.camera.update(dt);
     this.uniforms.view = zmath.lookAtLh(this.camera.position, this.camera.position + this.camera.front, this.camera.up);
 
