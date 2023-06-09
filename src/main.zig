@@ -201,6 +201,7 @@ pub fn main() !void {
     }
 
     defer response.?.adapter.release();
+
     // MARK: where we'll set limits
     var limits: gpu.SupportedLimits = .{};
     _ = response.?.adapter.getLimits(&limits);

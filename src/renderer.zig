@@ -80,8 +80,6 @@ depth_texture_view: *gpu.TextureView,
 
 vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
-index_buffer: *gpu.Buffer,
-index_count: usize,
 
 camera: Camera,
 
@@ -244,7 +242,6 @@ pub fn updateWindow(this: *Renderer) void {
 
     // uniform
     const ratio = @intToFloat(f32, this.width) / @intToFloat(f32, this.height);
-    this.uniforms.ratio = ratio;
     this.uniforms.perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0);
 
     var uniforms_slice: []Uniforms = undefined;
@@ -275,22 +272,14 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
+        .label = "Vertex buffer",
         .usage = gpu.Buffer.UsageFlags {
             .vertex = true,
             .copy_dst = true
         },
-        .size = model.vertices.len * @sizeOf(f32)
+        .size = model.buffer.len * @sizeOf(f32)
     });
-    queue.writeBuffer(vertex_buffer, 0, model.vertices);
-
-    var index_buffer = device.createBuffer(&.{
-        .usage = gpu.Buffer.UsageFlags {
-            .index = true,
-            .copy_dst = true
-        },
-        .size = model.indices.len * @sizeOf(u32)
-    });
-    queue.writeBuffer(index_buffer, 0, model.indices);
+    queue.writeBuffer(vertex_buffer, 0, model.buffer);
 
     // Write uniform buffers and binding group.
     var uniforms = Uniforms {
@@ -300,6 +289,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0)
     };
     var uniform_buffer = device.createBuffer(&.{
+        .label = "Uniform buffer",
         .usage = gpu.Buffer.UsageFlags {
             .uniform = true,
             .copy_dst = true
@@ -333,6 +323,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
 
     // Depth texture
     const depth_texture = device.createTexture(&gpu.Texture.Descriptor.init(.{
+        .label = "Depth texture",
         .usage = gpu.Texture.UsageFlags {
             .render_attachment = true
         },
@@ -349,6 +340,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     }));
 
     const depth_texture_view = depth_texture.createView(&gpu.TextureView.Descriptor {
+        .label = "Depth texture view",
         .aspect = gpu.Texture.Aspect.depth_only,
         .base_array_layer = 0,
         .array_layer_count = 1,
@@ -373,6 +365,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     defer shader_module.release();
 
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
+        .label = "OceanMan pipeline",
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
             .bind_group_layouts = &.{ uniform_layout }
         })),
@@ -381,12 +374,17 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
             .entry_point = "vs_main",
             .buffers = &.{
                 gpu.VertexBufferLayout.init(.{
-                    .array_stride = 3 * @sizeOf(f32),
+                    .array_stride = 6 * @sizeOf(f32),
                     .attributes = &.{
                         gpu.VertexAttribute {
                             .format = gpu.VertexFormat.float32x3,
                             .offset = 0,
                             .shader_location = 0
+                        },
+                        gpu.VertexAttribute {
+                            .format = gpu.VertexFormat.float32x3,
+                            .offset = 3 * @sizeOf(f32),
+                            .shader_location = 1
                         }
                     }
                 })
@@ -430,9 +428,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .depth_texture = depth_texture,
         .depth_texture_view = depth_texture_view,
         .vertex_buffer = vertex_buffer,
-        .vertex_count = model.vertices.len,
-        .index_buffer = index_buffer,
-        .index_count = model.indices.len,
+        .vertex_count = model.buffer.len / 6,
         .camera = .{}
     };
 
@@ -460,9 +456,10 @@ pub fn update(this: *Renderer, dt: f32) void {
     defer encoder.release();
     
     var renderPass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
+        .label = "Pass",
         .color_attachments = &.{
             gpu.RenderPassColorAttachment {
-                .clear_value = gpu.Color { .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
+                .clear_value = gpu.Color { .r = 0.22, .g = 0.62, .b = 0.94, .a = 1.0 },
                 .load_op = gpu.LoadOp.clear,
                 .store_op = gpu.StoreOp.store,
                 .view = next_texture
@@ -488,10 +485,9 @@ pub fn update(this: *Renderer, dt: f32) void {
 
     renderPass.setPipeline(this.pipeline);
     renderPass.setBindGroup(0, this.uniform_binding, null);
-    renderPass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * @sizeOf(f32));
-    renderPass.setIndexBuffer(this.index_buffer, gpu.IndexFormat.uint32, 0, this.index_count * @sizeOf(u32));
+    renderPass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 6 * @sizeOf(f32));
 
-    renderPass.drawIndexed(@intCast(u32, this.index_count), 1, 0, 0, 0);
+    renderPass.draw(@intCast(u32,this.vertex_count), 1, 0, 0);
     renderPass.end();
         
     var commands = encoder.finish(&.{});
