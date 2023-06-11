@@ -12,13 +12,14 @@ const Uniforms = struct {
     perspective: Mat,
     view: Mat,
     model: Mat,
-    ratio: f32
+    padding: [12]f32 = [_]f32{0.0} ** 12,
+    camera_pos: Vec
 };
 
 const Camera = struct {
     right_click: bool = false,
     first_mouse: bool = true,
-    yaw: f32 = 0.0,
+    yaw: f32 = 90.0,
     pitch: f32 = 0.0,
     last_x: f32 = 0.0,
     last_y: f32 = 0.0,
@@ -30,8 +31,8 @@ const Camera = struct {
     upp: bool = false,
     down: bool = false,
 
-    position: Vec = zmath.f32x4(0.0, 0.0, 3.0, 1.0),
-    front: Vec = zmath.f32x4(0.0, 0.0, -1.0, 0.0),
+    position: Vec = zmath.f32x4(0.0, 0.0, -3.0, 1.0),
+    front: Vec = zmath.f32x4(0.0, 0.0, 1.0, 0.0),
     up: Vec = zmath.f32x4(0.0, 1.0, 0.0, 1.0),
 
     pub fn update(this: *Camera, dt: f32) void {
@@ -268,7 +269,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     });
     const ratio: f32  = 640.0 / 480.0;
 
-    var model = Model.createFromFile(gpa, "resources/suzanne.m3d") catch unreachable;
+    var model = Model.createFromFile(gpa, "resources/sphere.m3d") catch unreachable;
     
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
@@ -280,13 +281,12 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .size = model.buffer.len * @sizeOf(f32)
     });
     queue.writeBuffer(vertex_buffer, 0, model.buffer);
-
     // Write uniform buffers and binding group.
     var uniforms = Uniforms {
-        .ratio = ratio,
-        .model = zmath.identity(),
+        .model = zmath.rotationY(std.math.pi),
         .view = zmath.identity(),
-        .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0)
+        .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0),
+        .camera_pos = zmath.f32x4(0.0, 0.0, 0.0, 1.0)
     };
     var uniform_buffer = device.createBuffer(&.{
         .label = "Uniform buffer",
@@ -307,7 +307,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
             gpu.BindGroupLayout.Entry.buffer(
                     0, 
                     gpu.ShaderStageFlags {
-                        .vertex = true
+                        .vertex = true,
+                        .fragment = true
                     },
                     gpu.Buffer.BindingType.uniform,
                     false,
@@ -443,6 +444,7 @@ pub fn update(this: *Renderer, dt: f32) void {
     }
     this.camera.update(dt);
     this.uniforms.view = zmath.lookAtLh(this.camera.position, this.camera.position + this.camera.front, this.camera.up);
+    this.uniforms.camera_pos = this.camera.position;
 
     var uniforms_slice: []Uniforms = undefined;
     uniforms_slice.len = 1;
@@ -459,7 +461,7 @@ pub fn update(this: *Renderer, dt: f32) void {
         .label = "Pass",
         .color_attachments = &.{
             gpu.RenderPassColorAttachment {
-                .clear_value = gpu.Color { .r = 0.22, .g = 0.62, .b = 0.94, .a = 1.0 },
+                .clear_value = gpu.Color { .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
                 .load_op = gpu.LoadOp.clear,
                 .store_op = gpu.StoreOp.store,
                 .view = next_texture
