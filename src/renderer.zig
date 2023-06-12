@@ -7,82 +7,30 @@ const Mat = zmath.Mat;
 const Vec = zmath.Vec;
 
 const Model = @import("loader.zig").Model;
-
-const Uniforms = struct {
-    perspective: Mat,
-    view: Mat,
-    model: Mat,
-    padding: [12]f32 = [_]f32{0.0} ** 12,
-    camera_pos: Vec
-};
-
-const Camera = struct {
-    right_click: bool = false,
-    first_mouse: bool = true,
-    yaw: f32 = 90.0,
-    pitch: f32 = 0.0,
-    last_x: f32 = 0.0,
-    last_y: f32 = 0.0,
-    
-    forward: bool = false,
-    backward: bool = false,
-    left: bool = false,
-    right: bool = false,
-    upp: bool = false,
-    down: bool = false,
-
-    position: Vec = zmath.f32x4(0.0, 0.0, -3.0, 1.0),
-    front: Vec = zmath.f32x4(0.0, 0.0, 1.0, 0.0),
-    up: Vec = zmath.f32x4(0.0, 1.0, 0.0, 1.0),
-
-    pub fn update(this: *Camera, dt: f32) void {
-        const cameraSpeed: f32 = 2.5;
-        if (this.forward) {
-            // this shouldn't be a plus (should be -), could be weird LH vs RH issue
-            this.position += this.front * @splat(4, cameraSpeed * dt);
-        }
-        if (this.backward) {
-            this.position -= this.front * @splat(4, cameraSpeed * dt);
-        }
-        if (this.left) {
-            this.position -= zmath.normalize3(zmath.cross3(this.up, this.front)) * @splat(4, cameraSpeed * dt);
-        }
-        if (this.right) {
-            this.position += zmath.normalize3(zmath.cross3(this.up, this.front)) * @splat(4, cameraSpeed * dt);
-        }
-        if (this.upp) {
-            this.position -= this.up * @splat(4, cameraSpeed * dt); 
-        }
-        if (this.down) {
-            this.position += this.up * @splat(4, cameraSpeed * dt);
-        }
-    }
-};
+const Camera = @import("camera.zig").Camera;
+const MeshPipeline = @import("mesh_pipeline.zig");
+const LightingPipeline = @import("lighting_pipeline.zig");
 
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
 
 width: u32 = 640,
 height: u32 = 480,
+ratio: f32 = 640.0 / 480.0,
 needs_resizing: bool = false,
 
 device: *gpu.Device,
 surface: *gpu.Surface,
 swapchain: *gpu.SwapChain,
 queue: *gpu.Queue,
-pipeline: *gpu.RenderPipeline,
-
-uniforms: Uniforms,
-uniform_buffer: *gpu.Buffer,
-uniform_binding: *gpu.BindGroup,
 
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
-vertex_buffer: *gpu.Buffer,
-vertex_count: usize,
-
 camera: Camera,
+
+mesh_pipeline: MeshPipeline,
+lighting_pipeline: LightingPipeline,
 
 // MARK: input/glfw callbacks
 pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
@@ -241,14 +189,7 @@ pub fn updateWindow(this: *Renderer) void {
         .format = gpu.Texture.Format.depth24_plus
     });
 
-    // uniform
-    const ratio = @intToFloat(f32, this.width) / @intToFloat(f32, this.height);
-    this.uniforms.perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0);
-
-    var uniforms_slice: []Uniforms = undefined;
-    uniforms_slice.len = 1;
-    uniforms_slice.ptr = @ptrCast([*]Uniforms, &this.uniforms);
-    this.queue.writeBuffer(this.uniform_buffer, 0, uniforms_slice); 
+    this.ratio = @intToFloat(f32, this.width) / @intToFloat(f32, this.height);
 }
 
 // MARK: init
@@ -267,60 +208,6 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .present_mode = gpu.PresentMode.fifo,
         .format = gpu.Texture.Format.bgra8_unorm
     });
-    const ratio: f32  = 640.0 / 480.0;
-
-    var model = Model.createFromFile(gpa, "resources/sphere.m3d") catch unreachable;
-    
-    // Write vertex and index buffers
-    var vertex_buffer = device.createBuffer(&.{
-        .label = "Vertex buffer",
-        .usage = gpu.Buffer.UsageFlags {
-            .vertex = true,
-            .copy_dst = true
-        },
-        .size = model.buffer.len * @sizeOf(f32)
-    });
-    queue.writeBuffer(vertex_buffer, 0, model.buffer);
-    // Write uniform buffers and binding group.
-    var uniforms = Uniforms {
-        .model = zmath.rotationY(std.math.pi),
-        .view = zmath.identity(),
-        .perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0),
-        .camera_pos = zmath.f32x4(0.0, 0.0, 0.0, 1.0)
-    };
-    var uniform_buffer = device.createBuffer(&.{
-        .label = "Uniform buffer",
-        .usage = gpu.Buffer.UsageFlags {
-            .uniform = true,
-            .copy_dst = true
-        },
-        .size = @sizeOf(Uniforms)
-    });
-
-    var uniforms_slice: []Uniforms = undefined;
-    uniforms_slice.len = 1;
-    uniforms_slice.ptr = @ptrCast([*]Uniforms, &uniforms);
-    queue.writeBuffer(uniform_buffer, 0, uniforms_slice);
-
-    var uniform_layout = device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
-        .entries = &.{
-            gpu.BindGroupLayout.Entry.buffer(
-                    0, 
-                    gpu.ShaderStageFlags {
-                        .vertex = true,
-                        .fragment = true
-                    },
-                    gpu.Buffer.BindingType.uniform,
-                    false,
-                    @sizeOf(Uniforms))
-        }
-    }));
-    var uniform_binding = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
-        .layout = uniform_layout,
-        .entries = &.{
-            gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(Uniforms)),
-        }
-    }));
 
     // Depth texture
     const depth_texture = device.createTexture(&gpu.Texture.Descriptor.init(.{
@@ -351,70 +238,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .format = gpu.Texture.Format.depth24_plus
     });
 
-    // Render pipeline
-    // FIXME: this cannot be the best way to add a sentinel
-    var file = std.fs.cwd().openFile("resources/shader.wgsl", .{ .mode = std.fs.File.OpenMode.read_only }) catch unreachable;
-    defer file.close();
-    const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
-    defer gpa.free(file_contents);    
-    const shader_source = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
-    defer gpa.free(shader_source);
-    std.mem.copyForwards(u8, shader_source, file_contents);
-    shader_source[shader_source.len - 1] = 0;
-
-    var shader_module = device.createShaderModuleWGSL("shaders", shader_source[0..(shader_source.len - 1) :0]);
-    defer shader_module.release();
-
-    var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
-        .label = "OceanMan pipeline",
-        .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
-            .bind_group_layouts = &.{ uniform_layout }
-        })),
-        .vertex = gpu.VertexState.init(.{
-            .module = shader_module,
-            .entry_point = "vs_main",
-            .buffers = &.{
-                gpu.VertexBufferLayout.init(.{
-                    .array_stride = 6 * @sizeOf(f32),
-                    .attributes = &.{
-                        gpu.VertexAttribute {
-                            .format = gpu.VertexFormat.float32x3,
-                            .offset = 0,
-                            .shader_location = 0
-                        },
-                        gpu.VertexAttribute {
-                            .format = gpu.VertexFormat.float32x3,
-                            .offset = 3 * @sizeOf(f32),
-                            .shader_location = 1
-                        }
-                    }
-                })
-            }
-        }),
-        .fragment = &gpu.FragmentState.init(.{
-            .module = shader_module,
-            .entry_point = "fs_main",
-            .targets = &.{
-                gpu.ColorTargetState {
-                    .format = .bgra8_unorm,
-                    .blend = &gpu.BlendState {
-                        .color = .{},
-                        .alpha = .{}
-                    },
-                    .write_mask = gpu.ColorWriteMaskFlags.all
-                }
-            }
-        }),
-        .primitive = .{},
-        .depth_stencil = &.{
-            .format = gpu.Texture.Format.depth24_plus,
-            .depth_compare = gpu.CompareFunction.less,
-            .depth_write_enabled = true,
-            .stencil_read_mask = 0,
-            .stencil_write_mask = 0
-        },
-        .multisample = .{}
-    });
+    var mesh_pipeline = MeshPipeline.init(gpa, device, queue);
+    var lighting_pipeline = LightingPipeline.init(gpa, device, queue);
 
     log.info("renderer initialized!", .{});
     return .{ 
@@ -422,14 +247,10 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .surface = surface,
         .swapchain = swapchain,
         .queue = queue,
-        .pipeline = pipeline,
-        .uniforms = uniforms,
-        .uniform_buffer = uniform_buffer,
-        .uniform_binding = uniform_binding,
         .depth_texture = depth_texture,
         .depth_texture_view = depth_texture_view,
-        .vertex_buffer = vertex_buffer,
-        .vertex_count = model.buffer.len / 6,
+        .mesh_pipeline = mesh_pipeline,
+        .lighting_pipeline = lighting_pipeline,
         .camera = .{}
     };
 
@@ -443,13 +264,7 @@ pub fn update(this: *Renderer, dt: f32) void {
         this.updateWindow();
     }
     this.camera.update(dt);
-    this.uniforms.view = zmath.lookAtLh(this.camera.position, this.camera.position + this.camera.front, this.camera.up);
-    this.uniforms.camera_pos = this.camera.position;
 
-    var uniforms_slice: []Uniforms = undefined;
-    uniforms_slice.len = 1;
-    uniforms_slice.ptr = @ptrCast([*]Uniforms, &this.uniforms);
-    this.queue.writeBuffer(this.uniform_buffer, 0, uniforms_slice);
     
     var next_texture = this.swapchain.getCurrentTextureView();
     defer next_texture.release();
@@ -485,11 +300,8 @@ pub fn update(this: *Renderer, dt: f32) void {
     }));
     defer renderPass.release();
 
-    renderPass.setPipeline(this.pipeline);
-    renderPass.setBindGroup(0, this.uniform_binding, null);
-    renderPass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 6 * @sizeOf(f32));
-
-    renderPass.draw(@intCast(u32,this.vertex_count), 1, 0, 0);
+    this.mesh_pipeline.update(renderPass, &this.camera, this.ratio);
+    this.lighting_pipeline.update(renderPass, &this.camera, this.ratio);
     renderPass.end();
         
     var commands = encoder.finish(&.{});
