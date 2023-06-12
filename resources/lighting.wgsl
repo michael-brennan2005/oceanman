@@ -9,9 +9,8 @@ struct Uniforms {
 
 
 struct LightingUniforms {
-    origins: array<vec3<f32>, 16>,
-    colors: array<vec3<f32>, 16>,
-    len: u32,
+    pos: vec4<f32>,
+    color: vec4<f32>
 }
 
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
@@ -40,6 +39,5 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    var light_color = lighting.colors[0];
-    return vec4<f32>( lighting.colors[0].xyz, 1.0);
+    return vec4<f32>( lighting.color);
 }

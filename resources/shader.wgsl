@@ -7,6 +7,14 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+struct LightingUniforms {
+    pos: vec4<f32>,
+    color: vec4<f32>
+}
+
+@group(1) @binding(0) var<uniform> lighting: LightingUniforms;
+
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -37,8 +45,6 @@ const diffuse_constant = 1.0;
 const specular_constant = 1.0;
 const ambient_constant = 0.05; 
 
-const light_origin = vec3<f32>(5.0, 5.0, -5.0);
-const light_color = vec3<f32>(1.0, 1.0, 1.0);
 
 @group(0) @binding(1) var texture: texture_2d<f32>;
 
@@ -47,14 +53,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(texture)));
     var surface_color = textureLoad(texture, texelCoords, 0).rgb;
 
-    var light_dir = normalize(light_origin - in.world_position);
+    var light_dir = normalize(lighting.pos.xyz - in.world_position);
     var view_dir = normalize(uniforms.camera_pos - in.world_position);
     var normal = normalize(in.normal);
     var reflected = 2.0 * dot(light_dir, normal) * normal - light_dir;
 
     var ambient = ambient_constant * surface_color;
-    var diffuse = diffuse_constant * clamp(dot(light_dir, normal), 0.0, 1.0) * surface_color * light_color;
-    var specular = specular_constant * pow(clamp(dot(reflected, view_dir), 0.0, 1.0), 16.0) * light_color; 
+    var diffuse = diffuse_constant * clamp(dot(light_dir, normal), 0.0, 1.0) * surface_color * lighting.color.xyz;
+    var specular = specular_constant * pow(clamp(dot(reflected, view_dir), 0.0, 1.0), 16.0) * lighting.color.xyz; 
 
     if (clamp(dot(light_dir, normal), 0.0, 1.0) <= 0.0) {
         specular = vec3<f32>(0.0, 0.0, 0.0);

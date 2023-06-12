@@ -53,10 +53,9 @@ fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.D
     return shader_module;
 }
 
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) LightingPipeline {
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource) LightingPipeline {
     var model = Model.createFromFile(gpa, "resources/cube.m3d", false) catch unreachable;
     var shader_module = shaderModuleFromPath(gpa, "resources/lighting.wgsl", device) catch unreachable;
-    var lighting_resource = LightingResource.init(device);
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
         .label = "Vertex buffer",
@@ -107,7 +106,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Ligh
 
    
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
-        .label = "OceanMan pipeline",
+        .label = "OceanMan lighting pipeline",
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
             .bind_group_layouts = &.{ uniform_layout, lighting_resource.bg_layout }
         })),
@@ -174,7 +173,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Ligh
 pub fn update(this: *LightingPipeline, pass: *gpu.RenderPassEncoder, camera: *Camera, ratio: f32) void {
     this.uniforms.perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0);
     this.uniforms.view = zmath.lookAtLh(camera.position, camera.position + camera.front, camera.up);
-    this.uniforms.model = zmath.mul(zmath.translation(5, 5.0, -5.0), zmath.scaling(0.5, 0.5, 0.5));
+    this.uniforms.model = zmath.mul(zmath.translation(this.lighting_resource.payload.origins[0][0], this.lighting_resource.payload.origins[0][1], this.lighting_resource.payload.origins[0][2]), zmath.scaling(0.5, 0.5, 0.5));
 
     this.uniforms.write_to_buffer(this.queue, this.uniform_buffer);
 
