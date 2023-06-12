@@ -10,10 +10,10 @@ pub const LightingResource = struct {
     pub const This = @This();
 
     pub const Payload = extern struct {
-        origins: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
-        colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
-        len: u32 = 0,
-        padding: [35]f32 = [_]f32{0.0} ** 35
+        origins: [1]zmath.Vec = .{zmath.f32x4(5.0, 5.0, 5.0, 0.0)},
+        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 0.0, 0.0, 1.0)}
+        //colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
+        //padding: [140]u8 = [_]u8{0} ** 140
     };
 
     payload: Payload = .{},
@@ -38,10 +38,7 @@ pub const LightingResource = struct {
 
         // TODO: get this to load in from somewhere
         resource.payload = .{};
-        resource.payload.origins[0] = zmath.vecToArr3(zmath.f32x4(5.0, -5.0, 5.0, 1.0));
-        resource.payload.colors[0] = zmath.vecToArr3(zmath.f32x4(1.0, 1.0, 1.0, 1.0));
-        resource.payload.len = 1; 
-        
+      
         var payload_slice: []Payload = undefined;
         payload_slice.len = 1;
         payload_slice.ptr = @ptrCast([*]Payload, &resource.payload);

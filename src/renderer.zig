@@ -8,8 +8,10 @@ const Vec = zmath.Vec;
 
 const Model = @import("loader.zig").Model;
 const Camera = @import("camera.zig").Camera;
+
 const MeshPipeline = @import("mesh_pipeline.zig");
 const LightingPipeline = @import("lighting_pipeline.zig");
+const LightingResource = @import("resources.zig").LightingResource;
 
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
@@ -31,6 +33,8 @@ camera: Camera,
 
 mesh_pipeline: MeshPipeline,
 lighting_pipeline: LightingPipeline,
+
+lighting_resource: LightingResource,
 
 // MARK: input/glfw callbacks
 pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
@@ -238,9 +242,13 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .format = gpu.Texture.Format.depth24_plus
     });
 
-    var mesh_pipeline = MeshPipeline.init(gpa, device, queue);
-    var lighting_pipeline = LightingPipeline.init(gpa, device, queue);
+    var lighting_resource = LightingResource.init(device);
+    std.debug.print("{?}\n", .{lighting_resource});
 
+    var mesh_pipeline = MeshPipeline.init(gpa, device, queue, lighting_resource);
+    var lighting_pipeline = LightingPipeline.init(gpa, device, queue, lighting_resource);
+
+    
     log.info("renderer initialized!", .{});
     return .{ 
         .device = device, 
@@ -251,6 +259,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .depth_texture_view = depth_texture_view,
         .mesh_pipeline = mesh_pipeline,
         .lighting_pipeline = lighting_pipeline,
+        .lighting_resource = lighting_resource,
         .camera = .{}
     };
 

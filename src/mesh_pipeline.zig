@@ -9,6 +9,8 @@ const Vec = zmath.Vec;
 const Model = @import("loader.zig").Model;
 const Camera = @import("camera.zig").Camera;
 
+const LightingResource = @import("resources.zig").LightingResource;
+
 const MeshPipeline = @This();
 
 queue: *gpu.Queue,
@@ -20,6 +22,8 @@ uniform_binding: *gpu.BindGroup,
 
 vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
+
+lighting_resource: LightingResource,
 
 // TODO: make this an object that actually manages buffer, can create a bind group and what not
 const Uniforms = struct {
@@ -51,7 +55,7 @@ fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.D
     return shader_module;
 }
 
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) MeshPipeline {
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource) MeshPipeline {
     var model = Model.createFromFile(gpa, "resources/viper.m3d", true) catch unreachable;
     
     // Write vertex and index buffers
@@ -161,9 +165,9 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Mesh
     var shader_module = shaderModuleFromPath(gpa, "resources/shader.wgsl", device) catch unreachable;
     
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
-        .label = "OceanMan pipeline",
+        .label = "OceanMan mesh pipeline",
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
-            .bind_group_layouts = &.{ uniform_layout }
+            .bind_group_layouts = &.{ uniform_layout, lighting_resource.bg_layout }
         })),
         .vertex = gpu.VertexState.init(.{
             .module = shader_module,
@@ -223,7 +227,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Mesh
         .uniform_buffer = uniform_buffer,
         .uniform_binding = uniform_binding,
         .vertex_buffer = vertex_buffer,
-        .vertex_count = model.buffer.len / 8
+        .vertex_count = model.buffer.len / 8,
+        .lighting_resource = lighting_resource
     };
     
 }
@@ -237,6 +242,7 @@ pub fn update(this: *MeshPipeline, pass: *gpu.RenderPassEncoder, camera: *Camera
 
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.uniform_binding, null);
+    pass.setBindGroup(1, this.lighting_resource.bg, null);
     pass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 8 * @sizeOf(f32));
     pass.draw(@intCast(u32,this.vertex_count), 1, 0, 0);
 }
