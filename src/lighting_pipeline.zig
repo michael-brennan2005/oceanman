@@ -10,7 +10,9 @@ const Model = @import("loader.zig").Model;
 const Camera = @import("camera.zig").Camera;
 
 const LightingPipeline = @This();
+const LightingResource = @import("resources.zig").LightingResource;
 
+device: *gpu.Device,
 queue: *gpu.Queue,
 pipeline: *gpu.RenderPipeline,
 
@@ -21,6 +23,7 @@ uniform_binding: *gpu.BindGroup,
 vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
 
+lighting_resource: LightingResource,
 // TODO: make this an object that actually manages buffer, can create a bind group and what not
 const Uniforms = struct {
     perspective: Mat,
@@ -52,7 +55,8 @@ fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.D
 
 pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) LightingPipeline {
     var model = Model.createFromFile(gpa, "resources/cube.m3d", false) catch unreachable;
-    
+    var shader_module = shaderModuleFromPath(gpa, "resources/lighting.wgsl", device) catch unreachable;
+    var lighting_resource = LightingResource.init(device);
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
         .label = "Vertex buffer",
@@ -63,6 +67,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Ligh
         .size = model.buffer.len * @sizeOf(f32)
     });
     queue.writeBuffer(vertex_buffer, 0, model.buffer);
+    
     // Write uniform buffers and binding group.
     var uniforms = Uniforms {
         .model = zmath.rotationY(std.math.pi),
@@ -100,12 +105,11 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Ligh
         }
     }));
 
-    var shader_module = shaderModuleFromPath(gpa, "resources/lighting.wgsl", device) catch unreachable;
-    
+   
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
         .label = "OceanMan pipeline",
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
-            .bind_group_layouts = &.{ uniform_layout }
+            .bind_group_layouts = &.{ uniform_layout, lighting_resource.bg_layout }
         })),
         .vertex = gpu.VertexState.init(.{
             .module = shader_module,
@@ -154,13 +158,15 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue) Ligh
     });
     
     return .{
+        .device = device,
         .queue = queue,
         .pipeline = pipeline,
         .uniforms = uniforms,
         .uniform_buffer = uniform_buffer,
         .uniform_binding = uniform_binding,
         .vertex_buffer = vertex_buffer,
-        .vertex_count = model.buffer.len / 6
+        .vertex_count = model.buffer.len / 6,
+        .lighting_resource = lighting_resource
     };
     
 }
@@ -174,6 +180,8 @@ pub fn update(this: *LightingPipeline, pass: *gpu.RenderPassEncoder, camera: *Ca
 
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.uniform_binding, null);
+    pass.setBindGroup(1, this.lighting_resource.bg, null);
+
     pass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 6 * @sizeOf(f32));
     pass.draw(@intCast(u32,this.vertex_count), 1, 0, 0);
 }

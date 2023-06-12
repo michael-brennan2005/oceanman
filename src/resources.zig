@@ -1,0 +1,74 @@
+const std = @import("std");
+const gpu = @import("gpu");
+const zmath = @import("zmath");
+const glfw = @import("glfw");
+
+const Mat = zmath.Mat;
+const Vec = zmath.Vec;
+
+pub const LightingResource = struct {
+    pub const This = @This();
+
+    pub const Payload = extern struct {
+        origins: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
+        colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
+        len: u32 = 0,
+        padding: [35]f32 = [_]f32{0.0} ** 35
+    };
+
+    payload: Payload = .{},
+    buffer: *gpu.Buffer = undefined,
+    bg_layout: *gpu.BindGroupLayout = undefined,
+    bg: *gpu.BindGroup = undefined,
+
+    pub fn init(device: *gpu.Device) LightingResource {
+        const queue = device.getQueue();
+        var resource: LightingResource = .{};
+            
+        // Uniform buffer
+        resource.buffer = device.createBuffer(&gpu.Buffer.Descriptor {
+            .label = "LightingResource - uniform buffer",
+            .mapped_at_creation = false,
+            .size = @sizeOf(Payload),
+            .usage = gpu.Buffer.UsageFlags {
+                .copy_dst = true,
+                .uniform = true
+            }
+        });
+
+        // TODO: get this to load in from somewhere
+        resource.payload = .{};
+        resource.payload.origins[0] = zmath.vecToArr3(zmath.f32x4(5.0, -5.0, 5.0, 1.0));
+        resource.payload.colors[0] = zmath.vecToArr3(zmath.f32x4(1.0, 1.0, 1.0, 1.0));
+        resource.payload.len = 1; 
+        
+        var payload_slice: []Payload = undefined;
+        payload_slice.len = 1;
+        payload_slice.ptr = @ptrCast([*]Payload, &resource.payload);
+        queue.writeBuffer(resource.buffer, 0, payload_slice);
+
+        resource.bg_layout = device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
+            .entries = &.{
+                gpu.BindGroupLayout.Entry.buffer(
+                    0,
+                    gpu.ShaderStageFlags {
+                        .vertex = true,
+                        .fragment = true
+                    },
+                    gpu.Buffer.BindingType.uniform,
+                    false,
+                    @sizeOf(Payload)
+                )
+            }
+        }));
+
+        resource.bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .layout = resource.bg_layout,
+            .entries = &.{
+                gpu.BindGroup.Entry.buffer(0, resource.buffer, 0, @sizeOf(Payload))
+            }
+        }));
+
+        return resource;
+    }
+};

@@ -1,12 +1,6 @@
 const std = @import("std");
 const model3d = @import("model3d");
 
-
-fn readFn(filename: [*c]u8, size: [*c]c_uint) callconv(.C) [*c]u8 {
-    std.debug.print("Model loader wants to read {s} size {?*}", .{filename, size});
-    var cool: u8 = 5;
-    return &cool;
-}
 pub const Model = struct {
     buffer: []f32,
     texture: ?[]u8,
@@ -25,7 +19,7 @@ pub const Model = struct {
 
         file_sentinel[file_contents.len] = 0;
 
-        const model = model3d.load(file_sentinel[0..file_contents.len:0], readFn, null, null) orelse unreachable;
+        const model = model3d.load(file_sentinel[0..file_contents.len:0], null, null, null) orelse unreachable;
     
         const vertices: []model3d.Vertex = model.handle.vertex[0..model.handle.numvertex];
 
