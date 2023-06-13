@@ -11,6 +11,8 @@ const Camera = @import("camera.zig").Camera;
 
 const MeshPipeline = @import("mesh_pipeline.zig");
 const LightingPipeline = @import("lighting_pipeline.zig");
+
+const SceneResource = @import("resources.zig").SceneResource;
 const LightingResource = @import("resources.zig").LightingResource;
 
 const Renderer = @This();
@@ -35,6 +37,7 @@ mesh_pipeline: MeshPipeline,
 lighting_pipeline: LightingPipeline,
 
 lighting_resource: LightingResource,
+scene_resource: SceneResource,
 
 // MARK: input/glfw callbacks
 pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
@@ -243,10 +246,10 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     });
 
     var lighting_resource = LightingResource.init(device);
-    std.debug.print("{?}\n", .{lighting_resource});
+    var scene_resource = SceneResource.init(device);
 
-    var mesh_pipeline = MeshPipeline.init(gpa, device, queue, lighting_resource);
-    var lighting_pipeline = LightingPipeline.init(gpa, device, queue, lighting_resource);
+    var mesh_pipeline = MeshPipeline.init(gpa, device, queue, lighting_resource, scene_resource);
+    var lighting_pipeline = LightingPipeline.init(gpa, device, queue, lighting_resource, scene_resource);
 
     
     log.info("renderer initialized!", .{});
@@ -260,6 +263,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .mesh_pipeline = mesh_pipeline,
         .lighting_pipeline = lighting_pipeline,
         .lighting_resource = lighting_resource,
+        .scene_resource = scene_resource,
         .camera = .{}
     };
 
@@ -311,6 +315,8 @@ pub fn update(this: *Renderer, dt: f32) void {
 
     this.mesh_pipeline.update(renderPass, &this.camera, this.ratio);
     this.lighting_pipeline.update(renderPass, &this.camera, this.ratio);
+
+    this.scene_resource.update(this.device, this.ratio, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
     renderPass.end();
         
     var commands = encoder.finish(&.{});

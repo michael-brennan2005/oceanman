@@ -11,6 +11,7 @@ const Camera = @import("camera.zig").Camera;
 
 const LightingPipeline = @This();
 const LightingResource = @import("resources.zig").LightingResource;
+const SceneResource = @import("resources.zig").SceneResource;
 
 device: *gpu.Device,
 queue: *gpu.Queue,
@@ -24,6 +25,8 @@ vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
 
 lighting_resource: LightingResource,
+scene_resource: SceneResource,
+
 // TODO: make this an object that actually manages buffer, can create a bind group and what not
 const Uniforms = struct {
     perspective: Mat,
@@ -53,7 +56,7 @@ fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.D
     return shader_module;
 }
 
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource) LightingPipeline {
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource, scene_resource: SceneResource) LightingPipeline {
     var model = Model.createFromFile(gpa, "resources/cube.m3d", false) catch unreachable;
     var shader_module = shaderModuleFromPath(gpa, "resources/lighting.wgsl", device) catch unreachable;
     // Write vertex and index buffers
@@ -165,7 +168,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
         .uniform_binding = uniform_binding,
         .vertex_buffer = vertex_buffer,
         .vertex_count = model.buffer.len / 6,
-        .lighting_resource = lighting_resource
+        .lighting_resource = lighting_resource,
+        .scene_resource = scene_resource
     };
     
 }
