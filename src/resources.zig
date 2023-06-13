@@ -71,7 +71,7 @@ pub const SceneResource = struct {
         this.payload.perspective = zmath.perspectiveFovLh(1.22, ratio, 0.01, 100.0);
         this.payload.view = zmath.lookAtLh(eyepos, focuspos, updir);
         this.payload.camera_pos = eyepos;
-        
+
         var payload_slice: []Payload = undefined;
         payload_slice.len = 1;
         payload_slice.ptr = @ptrCast([*]Payload, &this.payload);
@@ -81,7 +81,7 @@ pub const SceneResource = struct {
 
 pub const LightingResource = struct {
     pub const Payload = extern struct {
-        origins: [1]zmath.Vec = .{zmath.f32x4(5.0, 5.0, 5.0, 0.0)},
+        origins: [1]zmath.Mat = .{zmath.translation(5.0, 5.0, 5.0)},
         colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 0.0, 0.0, 1.0)}
         //colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
         //padding: [140]u8 = [_]u8{0} ** 140
@@ -155,6 +155,7 @@ pub const MeshResource = struct {
     };
 
     vertex_buffer: *gpu.Buffer,
+    vertex_buffer_count: u32,
     vertex_buffer_layout: gpu.VertexBufferLayout,
 
     uniform_buffer: *gpu.Buffer,
@@ -349,6 +350,7 @@ pub const MeshResource = struct {
         return .{
             .vertex_buffer = vertex_buffer,
             .vertex_buffer_layout = vertex_buffer_layout,
+            .vertex_buffer_count = @intCast(u32, buffer_payload.buffer.len) / 8,
             .uniform_buffer = uniform_buffer,
             .texture = texture,
             .bg_layout = bg_layout,

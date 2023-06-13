@@ -1,6 +1,7 @@
 const std = @import("std");
 const model3d = @import("model3d");
 
+// TODO: get rid of this!
 pub const Model = struct {
     buffer: []f32,
     texture: ?[]u8,
