@@ -313,9 +313,10 @@ pub fn update(this: *Renderer, dt: f32) void {
     }));
     defer renderPass.release();
 
-    this.mesh_pipeline.update(renderPass, &this.camera, this.ratio);
-    this.lighting_pipeline.update(renderPass, &this.camera, this.ratio);
     this.scene_resource.update(this.device, this.ratio, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
+
+    this.mesh_pipeline.update(renderPass);
+    this.lighting_pipeline.update(renderPass);
     
     renderPass.end();
         

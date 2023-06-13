@@ -1,11 +1,10 @@
-struct Uniforms {
+struct SceneUniforms {
     perspective: mat4x4<f32>,
     view: mat4x4<f32>,
-    model: mat4x4<f32>,
     camera_pos: vec3<f32>
 }
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(0) var<uniform> scene: SceneUniforms;
 
 struct LightingUniforms {
     pos: vec4<f32>,
@@ -14,21 +13,13 @@ struct LightingUniforms {
 
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
 
-struct SceneUniforms {
-    perspective: mat4x4<f32>,
-    view: mat4x4<f32>,
-    camera_pos: vec3<f32>
-}
-
-@group(2) @binding(0) var<uniform> scene: SceneUniforms;
-
 struct MeshUniforms {
     model: mat4x4<f32>,
     normal: mat4x4<f32>
 }
 
-@group(3) @binding(0) var<uniform> mesh: MeshUniforms;
-@group(3) @binding(1) var texture: texture_2d<f32>;
+@group(2) @binding(0) var<uniform> mesh: MeshUniforms;
+@group(2) @binding(1) var texture: texture_2d<f32>;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
