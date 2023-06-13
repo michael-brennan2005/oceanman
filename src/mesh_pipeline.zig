@@ -11,6 +11,7 @@ const Camera = @import("camera.zig").Camera;
 
 const LightingResource = @import("resources.zig").LightingResource;
 const SceneResource = @import("resources.zig").SceneResource;
+const MeshResource = @import("resources.zig").MeshResource;
 
 const MeshPipeline = @This();
 
@@ -26,6 +27,7 @@ vertex_count: usize,
 
 lighting_resource: LightingResource,
 scene_resource: SceneResource,
+mesh_resource: MeshResource,
 
 // TODO: make this an object that actually manages buffer, can create a bind group and what not
 const Uniforms = struct {
@@ -60,6 +62,8 @@ fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.D
 pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource, scene_resource: SceneResource) MeshPipeline {
     var model = Model.createFromFile(gpa, "resources/viper.m3d", true) catch unreachable;
     
+    var mesh_resource = MeshResource.init(gpa, device, "resources/viper.m3d", true) catch unreachable;
+
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
         .label = "Vertex buffer",
@@ -169,7 +173,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
         .label = "OceanMan mesh pipeline",
         .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
-            .bind_group_layouts = &.{ uniform_layout, lighting_resource.bg_layout, scene_resource.bg_layout }
+            .bind_group_layouts = &.{ uniform_layout, lighting_resource.bg_layout, scene_resource.bg_layout, mesh_resource.bg_layout }
         })),
         .vertex = gpu.VertexState.init(.{
             .module = shader_module,
@@ -231,7 +235,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
         .vertex_buffer = vertex_buffer,
         .vertex_count = model.buffer.len / 8,
         .lighting_resource = lighting_resource,
-        .scene_resource = scene_resource
+        .scene_resource = scene_resource,
+        .mesh_resource = mesh_resource
     };
     
 }
@@ -247,6 +252,8 @@ pub fn update(this: *MeshPipeline, pass: *gpu.RenderPassEncoder, camera: *Camera
     pass.setBindGroup(0, this.uniform_binding, null);
     pass.setBindGroup(1, this.lighting_resource.bg, null);
     pass.setBindGroup(2, this.scene_resource.bg, null);
+    pass.setBindGroup(3, this.mesh_resource.bg, null);
+
     pass.setVertexBuffer(0, this.vertex_buffer, 0, this.vertex_count * 8 * @sizeOf(f32));
     pass.draw(@intCast(u32,this.vertex_count), 1, 0, 0);
 }
