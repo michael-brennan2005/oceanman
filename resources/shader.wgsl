@@ -14,6 +14,12 @@ struct LightingUniforms {
 
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
 
+struct SceneUniforms {
+    perspective: mat4x4<f32>,
+    view: mat4x4<f32>
+}
+
+@group(2) @binding(0) var<uniform> scene: SceneUniforms;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -33,7 +39,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     
     out.normal = (uniforms.model * vec4<f32>(in.normal, 0.0)).xyz;
-    out.clip_space_position = uniforms.perspective * uniforms.view * uniforms.model * vec4<f32>(in.position.xyz, 1.0);
+    out.clip_space_position = scene.perspective * scene.view * uniforms.model * vec4<f32>(in.position.xyz, 1.0);
     out.world_position = (uniforms.model * vec4<f32>(in.position,1.0)).xyz;
     out.uv = in.uv;
 	return out;
