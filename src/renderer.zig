@@ -202,7 +202,7 @@ pub fn updateWindow(this: *Renderer) void {
 }
 
 // MARK: init
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) Renderer {
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, mesh: []const u8) Renderer {
     log.info("initializng renderer...", .{});
     
     const queue = device.getQueue();
@@ -254,7 +254,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
     lighting_resource.* = LightingResource.init(device);    
     
     var mesh_resource = gpa.create(MeshResource) catch unreachable;
-    mesh_resource.* = MeshResource.init(gpa, device, "resources/viper.m3d", true) catch unreachable;
+    mesh_resource.* = MeshResource.init(gpa, device, mesh, true) catch unreachable;
 
     var mesh_pipeline = gpa.create(MeshPipeline) catch unreachable;
     mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, lighting_resource, mesh_resource);

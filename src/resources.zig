@@ -101,7 +101,7 @@ pub const SceneResource = struct {
 pub const LightingResource = struct {
     pub const Payload = extern struct {
         origins: [1]zmath.Vec = .{zmath.f32x4(5.0, 5.0, 5.0, 1.0)},
-        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 0.0, 1.0, 1.0)}
+        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 1.0, 1.0, 1.0)}
         //colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
         //padding: [140]u8 = [_]u8{0} ** 140
     };
