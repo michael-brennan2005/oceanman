@@ -29,6 +29,7 @@ fn log(
 
 const glfw_log = std.log.scoped(.glfw);
 const wgpu_log = std.log.scoped(.webgpu);
+const app_log = std.log.scoped(.oceanman);
 
 // MARK: GPU utilities
 pub const GPUInterface = gpu.dawn.Interface;
@@ -220,7 +221,15 @@ pub fn main() !void {
 
     var surface = createSurfaceForWindow(instance, window, comptime detectGLFWOptions());
 
-    var renderer: Renderer = Renderer.init(allocator, device.?, surface);
+    var args = std.process.argsAlloc(gpa.allocator()) catch unreachable;
+    if (args.len <= 1) {
+        app_log.err("need one argument for file to load", .{});
+        std.process.exit(1);
+    }
+
+    var file = args[1];
+    
+    var renderer: Renderer = Renderer.init(allocator, device.?, surface, file);
     renderer_handle = &renderer;
     defer renderer.deinit();
 
