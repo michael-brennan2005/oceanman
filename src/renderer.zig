@@ -6,11 +6,10 @@ const glfw = @import("glfw");
 const Mat = zmath.Mat;
 const Vec = zmath.Vec;
 
-const Model = @import("loader.zig").Model;
 const Camera = @import("camera.zig").Camera;
 
-const MeshPipeline = @import("mesh_pipeline.zig");
-const LightingPipeline = @import("lighting_pipeline.zig");
+const MeshPipeline = @import("pipelines.zig").MeshPipeline;
+const LightingPipeline = @import("pipelines.zig").LightingPipeline;
 
 const SceneResource = @import("resources.zig").SceneResource;
 const LightingResource = @import("resources.zig").LightingResource;
