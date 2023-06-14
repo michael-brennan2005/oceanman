@@ -12,33 +12,19 @@ const Camera = @import("camera.zig").Camera;
 const LightingResource = @import("resources.zig").LightingResource;
 const SceneResource = @import("resources.zig").SceneResource;
 const MeshResource = @import("resources.zig").MeshResource;
+const ShaderResource = @import("resources.zig").ShaderResource;
 
 const MeshPipeline = @This();
 
 queue: *gpu.Queue,
 pipeline: *gpu.RenderPipeline,
 
-lighting_resource: LightingResource,
-scene_resource: SceneResource,
-mesh_resource: MeshResource,
+lighting_resource: *LightingResource,
+scene_resource: *SceneResource,
+mesh_resource: *MeshResource,
 
-fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.Device) !*gpu.ShaderModule {
-    var file = std.fs.cwd().openFile(path, .{ .mode = std.fs.File.OpenMode.read_only }) catch unreachable;
-    defer file.close();
-    const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
-    defer gpa.free(file_contents);    
-    const shader_source = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
-    defer gpa.free(shader_source);
-    std.mem.copyForwards(u8, shader_source, file_contents);
-    shader_source[shader_source.len - 1] = 0;
-
-    var shader_module = device.createShaderModuleWGSL("shaders", shader_source[0..(shader_source.len - 1) :0]);
-    return shader_module;
-}
-
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource, scene_resource: SceneResource) MeshPipeline {
-    var mesh_resource = MeshResource.init(gpa, device, "resources/viper.m3d", true) catch unreachable;
-    var shader_module = shaderModuleFromPath(gpa, "resources/mesh_pipeline.wgsl", device) catch unreachable;
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue,  scene_resource: *SceneResource, lighting_resource: *LightingResource, mesh_resource: *MeshResource) MeshPipeline {
+    var shader_module = ShaderResource.init(gpa, device, "resources/mesh_pipeline.wgsl");
     
     var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
         .label = "OceanMan mesh pipeline",
@@ -46,14 +32,14 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
             .bind_group_layouts = &.{ scene_resource.bg_layout, lighting_resource.bg_layout, mesh_resource.bg_layout }
         })),
         .vertex = gpu.VertexState.init(.{
-            .module = shader_module,
+            .module = shader_module.module,
             .entry_point = "vs_main",
             .buffers = &.{
                 mesh_resource.vertex_buffer_layout
             }
         }),
         .fragment = &gpu.FragmentState.init(.{
-            .module = shader_module,
+            .module = shader_module.module,
             .entry_point = "fs_main",
             .targets = &.{
                 gpu.ColorTargetState {

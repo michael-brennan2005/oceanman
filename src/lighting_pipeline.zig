@@ -12,6 +12,7 @@ const Camera = @import("camera.zig").Camera;
 const LightingPipeline = @This();
 const LightingResource = @import("resources.zig").LightingResource;
 const SceneResource = @import("resources.zig").SceneResource;
+const ShaderResource = @import("resources.zig").ShaderResource;
 
 device: *gpu.Device,
 queue: *gpu.Queue,
@@ -21,26 +22,12 @@ pipeline: *gpu.RenderPipeline,
 vertex_buffer: *gpu.Buffer,
 vertex_count: usize,
 
-lighting_resource: LightingResource,
-scene_resource: SceneResource,
+lighting_resource: *LightingResource,
+scene_resource: *SceneResource,
 
-fn shaderModuleFromPath(gpa: std.mem.Allocator, path: []const u8, device: *gpu.Device) !*gpu.ShaderModule {
-    var file = std.fs.cwd().openFile(path, .{ .mode = std.fs.File.OpenMode.read_only }) catch unreachable;
-    defer file.close();
-    const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
-    defer gpa.free(file_contents);    
-    const shader_source = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
-    defer gpa.free(shader_source);
-    std.mem.copyForwards(u8, shader_source, file_contents);
-    shader_source[shader_source.len - 1] = 0;
-
-    var shader_module = device.createShaderModuleWGSL("shaders", shader_source[0..(shader_source.len - 1) :0]);
-    return shader_module;
-}
-
-pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, lighting_resource: LightingResource, scene_resource: SceneResource) LightingPipeline {
+pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, scene_resource: *SceneResource, lighting_resource: *LightingResource,) LightingPipeline {
     var model = Model.createFromFile(gpa, "resources/cube.m3d", false) catch unreachable;
-    var shader_module = shaderModuleFromPath(gpa, "resources/lighting_pipeline.wgsl", device) catch unreachable;
+    var shader_module = ShaderResource.init(gpa, device, "resources/lighting_pipeline.wgsl");
     // Write vertex and index buffers
     var vertex_buffer = device.createBuffer(&.{
         .label = "Vertex buffer",
@@ -58,7 +45,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
             .bind_group_layouts = &.{ scene_resource.bg_layout, lighting_resource.bg_layout }
         })),
         .vertex = gpu.VertexState.init(.{
-            .module = shader_module,
+            .module = shader_module.module,
             .entry_point = "vs_main",
             .buffers = &.{
                 gpu.VertexBufferLayout.init(.{
@@ -79,7 +66,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
             }
         }),
         .fragment = &gpu.FragmentState.init(.{
-            .module = shader_module,
+            .module = shader_module.module,
             .entry_point = "fs_main",
             .targets = &.{
                 gpu.ColorTargetState {
@@ -110,7 +97,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue, ligh
         .vertex_buffer = vertex_buffer,
         .vertex_count = model.buffer.len / 6,
         .lighting_resource = lighting_resource,
-        .scene_resource = scene_resource
+        .scene_resource = scene_resource,
     };
     
 }
