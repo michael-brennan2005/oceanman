@@ -14,6 +14,7 @@ const LightingPipeline = @import("lighting_pipeline.zig");
 
 const SceneResource = @import("resources.zig").SceneResource;
 const LightingResource = @import("resources.zig").LightingResource;
+const MeshResource = @import("resources.zig").MeshResource;
 
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
@@ -33,11 +34,12 @@ depth_texture_view: *gpu.TextureView,
 
 camera: Camera,
 
-mesh_pipeline: MeshPipeline,
-lighting_pipeline: LightingPipeline,
+mesh_pipeline: *MeshPipeline,
+lighting_pipeline: *LightingPipeline,
 
-lighting_resource: LightingResource,
-scene_resource: SceneResource,
+scene_resource: *SceneResource,
+lighting_resource: *LightingResource,
+mesh_resource: *MeshResource,
 
 // MARK: input/glfw callbacks
 pub fn onKeyDown(this: *Renderer, key: glfw.Key) void {
@@ -245,12 +247,20 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .format = gpu.Texture.Format.depth24_plus
     });
 
-    var lighting_resource = LightingResource.init(device);
-    var scene_resource = SceneResource.init(device);
+    var scene_resource = gpa.create(SceneResource) catch unreachable;
+    scene_resource.* = SceneResource.init(device);
 
-    var mesh_pipeline = MeshPipeline.init(gpa, device, queue, lighting_resource, scene_resource);
-    var lighting_pipeline = LightingPipeline.init(gpa, device, queue, lighting_resource, scene_resource);
+    var lighting_resource = gpa.create(LightingResource) catch unreachable;
+    lighting_resource.* = LightingResource.init(device);    
+    
+    var mesh_resource = gpa.create(MeshResource) catch unreachable;
+    mesh_resource.* = MeshResource.init(gpa, device, "resources/viper.m3d", true) catch unreachable;
 
+    var mesh_pipeline = gpa.create(MeshPipeline) catch unreachable;
+    mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, lighting_resource, mesh_resource);
+  
+    var lighting_pipeline = gpa.create(LightingPipeline) catch unreachable;
+    lighting_pipeline.* = LightingPipeline.init(gpa, device, queue, scene_resource, lighting_resource); 
     
     log.info("renderer initialized!", .{});
     return .{ 
@@ -264,6 +274,7 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface) 
         .lighting_pipeline = lighting_pipeline,
         .lighting_resource = lighting_resource,
         .scene_resource = scene_resource,
+        .mesh_resource = mesh_resource,
         .camera = .{}
     };
 

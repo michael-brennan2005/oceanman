@@ -7,6 +7,25 @@ const glfw = @import("glfw");
 const Mat = zmath.Mat;
 const Vec = zmath.Vec;
 
+pub const ShaderResource = struct {
+    module: *gpu.ShaderModule,
+
+    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8) ShaderResource {
+        var file = std.fs.cwd().openFile(path, .{ .mode = std.fs.File.OpenMode.read_only }) catch unreachable;
+        defer file.close();
+        const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
+        defer gpa.free(file_contents);    
+        const shader_source = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
+        defer gpa.free(shader_source);
+        std.mem.copyForwards(u8, shader_source, file_contents);
+        shader_source[shader_source.len - 1] = 0;
+        var shader_module = device.createShaderModuleWGSL("shaders", shader_source[0..(shader_source.len - 1) :0]);
+        return .{
+            .module = shader_module
+        };
+    }
+};
+
 pub const SceneResource = struct {
     pub const Payload = extern struct {
         perspective: Mat = zmath.identity(),
@@ -153,6 +172,9 @@ pub const MeshResource = struct {
         model: zmath.Mat = zmath.identity(),
         normal: zmath.Mat = zmath.identity()
     };
+
+    buffer_payload: BufferPayload,
+    uniform_payload: UniformPayload,
 
     vertex_buffer: *gpu.Buffer,
     vertex_buffer_count: u32,
@@ -348,6 +370,8 @@ pub const MeshResource = struct {
         }));
 
         return .{
+            .buffer_payload = buffer_payload,
+            .uniform_payload = uniform_payload,
             .vertex_buffer = vertex_buffer,
             .vertex_buffer_layout = vertex_buffer_layout,
             .vertex_buffer_count = @intCast(u32, buffer_payload.buffer.len) / 8,
