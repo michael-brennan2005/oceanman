@@ -100,8 +100,8 @@ pub const SceneResource = struct {
 
 pub const LightingResource = struct {
     pub const Payload = extern struct {
-        origins: [1]zmath.Mat = .{zmath.translation(5.0, 5.0, 5.0)},
-        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 0.0, 0.0, 1.0)}
+        origins: [1]zmath.Vec = .{zmath.f32x4(5.0, 5.0, 5.0, 1.0)},
+        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 0.0, 1.0, 1.0)}
         //colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
         //padding: [140]u8 = [_]u8{0} ** 140
     };
@@ -128,7 +128,7 @@ pub const LightingResource = struct {
 
         // TODO: get this to load in from somewhere
         resource.payload = .{};
-      
+        
         var payload_slice: []Payload = undefined;
         payload_slice.len = 1;
         payload_slice.ptr = @ptrCast([*]Payload, &resource.payload);
@@ -377,6 +377,143 @@ pub const MeshResource = struct {
             .vertex_buffer_count = @intCast(u32, buffer_payload.buffer.len) / 8,
             .uniform_buffer = uniform_buffer,
             .texture = texture,
+            .bg_layout = bg_layout,
+            .bg = bg
+        };
+    }
+};
+
+
+pub const UntexturedMeshResource = struct {
+    pub const BufferPayload = struct {
+        buffer: []f32
+    };
+
+    pub const UniformPayload = extern struct {
+        model: zmath.Mat = zmath.identity(),
+        normal: zmath.Mat = zmath.identity()
+    };
+
+    buffer_payload: BufferPayload,
+    uniform_payload: UniformPayload,
+
+    vertex_buffer: *gpu.Buffer,
+    vertex_buffer_count: u32,
+    vertex_buffer_layout: gpu.VertexBufferLayout,
+
+    uniform_buffer: *gpu.Buffer,
+
+    bg_layout: *gpu.BindGroupLayout,
+    bg: *gpu.BindGroup,
+
+    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8) !UntexturedMeshResource {
+        const queue = device.getQueue();
+        
+        // FIXME: cmon man - sentinel b.s
+        var file = std.fs.cwd().openFile(path, .{}) catch unreachable;
+        defer file.close();
+        const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
+        defer gpa.free(file_contents);    
+        const file_sentinel = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
+        defer gpa.free(file_sentinel);
+        std.mem.copyForwards(u8, file_sentinel, file_contents);
+
+        file_sentinel[file_contents.len] = 0;
+
+        const model = model3d.load(file_sentinel[0..file_contents.len:0], null, null, null) orelse unreachable;
+    
+        const vertices: []model3d.Vertex = model.handle.vertex[0..model.handle.numvertex];
+
+        const faces: []model3d.Face = model.handle.face[0..model.handle.numface];
+        var buffer_toreturn = std.ArrayList(f32).init(gpa);
+        for (faces) |face| {
+            for (0..3) |i| {
+                try buffer_toreturn.append(vertices[face.vertex[i]].x);
+                try buffer_toreturn.append(vertices[face.vertex[i]].y);
+                try buffer_toreturn.append(vertices[face.vertex[i]].z);
+                try buffer_toreturn.append(vertices[face.normal[i]].x);
+                try buffer_toreturn.append(vertices[face.normal[i]].y);
+                try buffer_toreturn.append(vertices[face.normal[i]].z);
+            }
+        }
+            
+        var buffer_payload: BufferPayload = .{
+            .buffer = buffer_toreturn.toOwnedSlice() catch unreachable
+        };
+
+        var uniform_payload: UniformPayload = .{
+            .model = zmath.translation(5.0, 5.0, 5.0),
+            .normal = zmath.inverse(zmath.transpose(zmath.translation(5.0, 5.0, 5.0)))
+        };
+
+        var uniform_buffer = device.createBuffer(&.{
+            .label = "Uniform buffer",
+            .usage = gpu.Buffer.UsageFlags {
+                .uniform = true,
+                .copy_dst = true
+            },
+            .size = @sizeOf(UniformPayload)
+        });
+        
+        var uniforms_slice: []UniformPayload = undefined;
+        uniforms_slice.len = 1;
+        uniforms_slice.ptr = @ptrCast([*]UniformPayload, &uniform_payload);
+        queue.writeBuffer(uniform_buffer, 0, uniforms_slice);
+
+        var vertex_buffer = device.createBuffer(&.{
+            .label = "Vertex buffer",
+            .usage = gpu.Buffer.UsageFlags {
+                .vertex = true,
+                .copy_dst = true
+            },
+            .size = buffer_payload.buffer.len * @sizeOf(f32)
+        });
+        queue.writeBuffer(vertex_buffer, 0, buffer_payload.buffer);
+        
+        var vertex_buffer_layout = gpu.VertexBufferLayout.init(.{
+            .array_stride = 6 * @sizeOf(f32),
+            .attributes = &.{
+                gpu.VertexAttribute {
+                    .format = gpu.VertexFormat.float32x3,
+                    .offset = 0,
+                    .shader_location = 0
+                },
+                gpu.VertexAttribute {
+                    .format = gpu.VertexFormat.float32x3,
+                    .offset = 3 * @sizeOf(f32),
+                    .shader_location = 1
+                }
+            }
+        });
+
+        var bg_layout = device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
+            .entries = &.{
+                gpu.BindGroupLayout.Entry.buffer(
+                    0, 
+                    gpu.ShaderStageFlags {
+                        .vertex = true,
+                        .fragment = true
+                    },
+                    gpu.Buffer.BindingType.uniform,
+                    false,
+                    @sizeOf(UniformPayload))
+            }
+        }));
+
+        var bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .layout = bg_layout,
+            .entries = &.{
+                gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(UniformPayload))
+            }
+        }));
+
+        return .{
+            .buffer_payload = buffer_payload,
+            .uniform_payload = uniform_payload,
+            .vertex_buffer = vertex_buffer,
+            .vertex_buffer_layout = vertex_buffer_layout,
+            .vertex_buffer_count = @intCast(u32, buffer_payload.buffer.len) / 6,
+            .uniform_buffer = uniform_buffer,
             .bg_layout = bg_layout,
             .bg = bg
         };
