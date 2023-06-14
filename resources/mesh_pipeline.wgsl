@@ -69,5 +69,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         specular = vec3<f32>(0.0, 0.0, 0.0);
     }
     var color = ambient + diffuse + specular;
-    return vec4<f32>( color, 1.0);
+    return vec4<f32>( color.xyz, 1.0);
 }
