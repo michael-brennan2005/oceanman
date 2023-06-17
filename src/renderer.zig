@@ -11,6 +11,7 @@ const Camera = @import("camera.zig").Camera;
 const loadFromFile = @import("loader.zig").loadFromFile;
 
 const MeshPipeline = @import("pipelines.zig").MeshPipeline;
+const shadowMapPipeline = @import("pipelines.zig").shadowMapPipeline;
 
 const SceneResource = @import("resources.zig").SceneResource;
 const LightingResource = @import("resources.zig").LightingResource;
@@ -27,16 +28,13 @@ queue: *gpu.Queue,
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
-shadowmap_texture: *gpu.Texture,
-shadowmap_texture_view: *gpu.TextureView,
-
-dummy_texture: *gpu.Texture,
-
 camera: Camera,
 
 mesh_pipeline: *MeshPipeline,
+shadowmap_pipeline: *gpu.RenderPipeline,
 
 scene_resource: *SceneResource,
+scene_resource_shadowmap: *SceneResource,
 lighting_resource: *LightingResource,
 mesh_resources: []*MeshResource,
 
@@ -220,11 +218,21 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .dimension = gpu.TextureView.Dimension.dimension_2d,
         .format = gpu.Texture.Format.depth24_plus
     });
+    _ = shadowmap_texture_view;
 
     var resources = loadFromFile(gpa, device, path);
         
     var scene_resource = gpa.create(SceneResource) catch unreachable;
     scene_resource.* = SceneResource.init(device);
+
+
+    var scene_resource_shadowmap = gpa.create(SceneResource) catch unreachable;
+    scene_resource_shadowmap.* = SceneResource.init(device);
+    scene_resource_shadowmap.update_raw(device, .{
+        .perspective = zmath.orthographicOffCenterLh(-10.0, 10.0, 10.0, -10.0, -10.0, 10.0),
+        .view = zmath.lookAtLh(zmath.inverse(resources.lighting.payload.direction), zmath.f32x4(0.0, 0.0, 0.0, 1.0), zmath.f32x4(0.0, 1.0, 0.0, 1.0)),
+        .camera_pos = zmath.f32x4(0.0, 0.0, 0.0, 0.0)
+    });
 
     var mesh_pipeline = gpa.create(MeshPipeline) catch unreachable;
     mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, resources.lighting, resources.meshes);
@@ -238,11 +246,11 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .depth_texture = depth_texture,
         .depth_texture_view = depth_texture_view,
         .mesh_pipeline = mesh_pipeline,
+        .shadowmap_pipeline = shadowMapPipeline(gpa, device, scene_resource, resources.lighting, resources.meshes[0]),
         .lighting_resource = resources.lighting,
         .scene_resource = scene_resource,
+        .scene_resource_shadowmap = scene_resource_shadowmap,
         .mesh_resources = resources.meshes,
-        .shadowmap_texture = shadowmap_texture,
-        .shadowmap_texture_view = shadowmap_texture_view,
         .camera = .{}
     };
 
@@ -258,9 +266,8 @@ pub fn update(this: *Renderer, dt: f32) void {
 
     var encoder = this.device.createCommandEncoder(&.{});
     defer encoder.release();
-    
-    var shadowPass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
-        .label = "Shadow Pass",
+    var shadow_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
+        .label = "Render Pass",
         .color_attachments = &.{
             gpu.RenderPassColorAttachment {
                 .clear_value = gpu.Color { .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
@@ -285,13 +292,21 @@ pub fn update(this: *Renderer, dt: f32) void {
             .depth_read_only = false
         }
     }));
-    defer shadowPass.release();
-    
-    this.mesh_pipeline.update(shadowPass);
+    defer shadow_pass.release();
+    shadow_pass.setPipeline(this.shadowmap_pipeline);
+    shadow_pass.setBindGroup(0, this.scene_resource_shadowmap.bg, null);
+    shadow_pass.setBindGroup(1, this.lighting_resource.bg, null);
 
-    shadowPass.end();
-    //var renderPass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
-    //    .label = "Pass",
+    for (this.mesh_resources) |mesh_resource| {
+        shadow_pass.setBindGroup(2, mesh_resource.bg, null);
+        shadow_pass.setVertexBuffer(0, mesh_resource.vertex_buffer, 0, mesh_resource.vertex_buffer_count * 8 * @sizeOf(f32));
+        shadow_pass.draw(@intCast(u32,mesh_resource.vertex_buffer_count), 1, 0, 0);
+    }
+
+    shadow_pass.end();
+
+    //var render_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
+    //    .label = "Render Pass",
     //    .color_attachments = &.{
     //        gpu.RenderPassColorAttachment {
     //            .clear_value = gpu.Color { .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
@@ -316,17 +331,17 @@ pub fn update(this: *Renderer, dt: f32) void {
     //        .depth_read_only = false
     //    }
     //}));
-    //defer renderPass.release();
+    //defer render_pass.release();
 //
     //this.scene_resource.update(this.device, 1600.0 / 900.0, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
 //
-    //this.mesh_pipeline.update(renderPass);
-    //
-    //renderPass.end();
-        
+    //this.mesh_pipeline.update(render_pass);
+//
+    //render_pass.end();
+    //    
     var commands = encoder.finish(&.{});
     defer commands.release();
-
+    
     this.queue.submit(&.{commands});
     this.swapchain.present();
 }

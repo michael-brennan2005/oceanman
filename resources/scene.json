@@ -7,8 +7,8 @@
     "meshes": [
         {
             "path": "resources/viper.m3d",
-            "position": [5, 5, 5],
-            "rotation": [0, 0, 0],
+            "position": [0,0, 4],
+            "rotation": [0, 90, 0],
             "scale": [2, 2, 2]
         },
         {

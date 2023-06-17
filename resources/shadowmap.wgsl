@@ -39,6 +39,6 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) f32 {
-    return in.clip_space_position.z;
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(in.clip_space_position.z, in.clip_space_position.z, in.clip_space_position.z, 1.0);
 }
