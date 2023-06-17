@@ -98,12 +98,11 @@ pub const SceneResource = struct {
     }
 };
 
+// One directional light for now.
 pub const LightingResource = struct {
     pub const Payload = extern struct {
-        origins: [1]zmath.Vec = .{zmath.f32x4(5.0, 5.0, 5.0, 1.0)},
-        colors: [1]zmath.Vec = .{zmath.f32x4(1.0, 1.0, 1.0, 1.0)}
-        //colors: [16][3]f32 = [_][3]f32{[_]f32{0.0} ** 3} ** 16,
-        //padding: [140]u8 = [_]u8{0} ** 140
+        direction: zmath.Vec = zmath.f32x4(5.0, 5.0, 5.0, 1.0),
+        color: zmath.Vec = zmath.f32x4(1.0, 1.0, 1.0, 1.0)
     };
 
     payload: Payload = .{},
@@ -111,7 +110,7 @@ pub const LightingResource = struct {
     bg_layout: *gpu.BindGroupLayout = undefined,
     bg: *gpu.BindGroup = undefined,
 
-    pub fn init(device: *gpu.Device) LightingResource {
+    pub fn init(device: *gpu.Device, direction: [3]f32, color: [3]f32) LightingResource {
         const queue = device.getQueue();
         var resource: LightingResource = .{};
             
@@ -127,7 +126,10 @@ pub const LightingResource = struct {
         });
 
         // TODO: get this to load in from somewhere
-        resource.payload = .{};
+        resource.payload = .{
+            .direction = zmath.normalize3(zmath.f32x4(direction[0], direction[1], direction[2], 0.0)),
+            .color = zmath.f32x4(color[0], color[1], color[2], 1.0)
+        };
         
         var payload_slice: []Payload = undefined;
         payload_slice.len = 1;
@@ -187,7 +189,7 @@ pub const MeshResource = struct {
     bg_layout: *gpu.BindGroupLayout,
     bg: *gpu.BindGroup,
 
-    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8, textured: bool) !MeshResource {
+    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8, model_matrix: Mat) !MeshResource {
         const queue = device.getQueue();
         
         // FIXME: cmon man - sentinel b.s
@@ -214,37 +216,34 @@ pub const MeshResource = struct {
                 try buffer_toreturn.append(vertices[face.vertex[i]].z);
                 try buffer_toreturn.append(vertices[face.normal[i]].x);
                 try buffer_toreturn.append(vertices[face.normal[i]].y);
-                try buffer_toreturn.append(vertices[face.normal[i]].z);
-                if (textured) {    
-                    try buffer_toreturn.append(model.handle.tmap[face.texcoord[i]].u);
-                    try buffer_toreturn.append(1.0 - model.handle.tmap[face.texcoord[i]].v);
-                }
+                try buffer_toreturn.append(vertices[face.normal[i]].z); 
+                try buffer_toreturn.append(model.handle.tmap[face.texcoord[i]].u);
+                try buffer_toreturn.append(1.0 - model.handle.tmap[face.texcoord[i]].v);
             }
         }
         
         
-        var texture_toreturn = std.ArrayList(u8).init(gpa);
-        if (textured) {    
-            var texture_data = model.textures()[0];
-            std.debug.print("Texture size: {?}x{?}x{?}\n", .{texture_data.w, texture_data.h, texture_data.f});
-            for (0..(@intCast(u32, texture_data.w) * @intCast(u32, texture_data.h))) |i| {
-                try texture_toreturn.append(texture_data.d[i * 3]);
-                try texture_toreturn.append(texture_data.d[i * 3 + 1]);
-                try texture_toreturn.append(texture_data.d[i * 3 + 2]);
-                try texture_toreturn.append(255);            
-            }
+        var texture_toreturn = std.ArrayList(u8).init(gpa);    
+        var texture_data = model.textures()[0];
+        std.debug.print("Texture size: {?}x{?}x{?}\n", .{texture_data.w, texture_data.h, texture_data.f});
+        for (0..(@intCast(u32, texture_data.w) * @intCast(u32, texture_data.h))) |i| {
+            try texture_toreturn.append(texture_data.d[i * 3]);
+            try texture_toreturn.append(texture_data.d[i * 3 + 1]);
+            try texture_toreturn.append(texture_data.d[i * 3 + 2]);
+            try texture_toreturn.append(255);            
         }
+        
 
         var buffer_payload: BufferPayload = .{
             .buffer = buffer_toreturn.toOwnedSlice() catch unreachable,
-            .texture = if (textured) (texture_toreturn.toOwnedSlice() catch unreachable) else null,
-            .texture_width = if (textured) (model.textures()[0].w) else 0,
-            .texture_height = if (textured) (model.textures()[0].h) else 0
+            .texture = texture_toreturn.toOwnedSlice() catch unreachable,
+            .texture_width = model.textures()[0].w,
+            .texture_height = model.textures()[0].h
         };
 
         var uniform_payload: UniformPayload = .{
-            .model = zmath.rotationY(std.math.pi),
-            .normal = zmath.inverse(zmath.transpose(zmath.rotationY(std.math.pi)))
+            .model = model_matrix,
+            .normal = zmath.inverse(zmath.transpose(model_matrix))
         };
 
         var uniform_buffer = device.createBuffer(&.{
@@ -406,7 +405,7 @@ pub const UntexturedMeshResource = struct {
     bg_layout: *gpu.BindGroupLayout,
     bg: *gpu.BindGroup,
 
-    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8) !UntexturedMeshResource {
+    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8, model_matrix: Mat) !UntexturedMeshResource {
         const queue = device.getQueue();
         
         // FIXME: cmon man - sentinel b.s
@@ -442,8 +441,8 @@ pub const UntexturedMeshResource = struct {
         };
 
         var uniform_payload: UniformPayload = .{
-            .model = zmath.translation(5.0, 5.0, 5.0),
-            .normal = zmath.inverse(zmath.transpose(zmath.translation(5.0, 5.0, 5.0)))
+            .model = model_matrix,
+            .normal = zmath.inverse(zmath.transpose(model_matrix))
         };
 
         var uniform_buffer = device.createBuffer(&.{

@@ -158,13 +158,6 @@ pub fn glfwCursorCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
     }
 }
 
-pub fn glfwResizeCallback(window: glfw.Window, width: u32, height: u32) void {
-    _ = window;
-    if (renderer_handle) |renderer| {
-        renderer.onWindowResize(width, height);
-    }
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -180,7 +173,7 @@ pub fn main() !void {
     defer glfw.terminate();
     glfw_log.info("GLFW initialized!", .{});
 
-    const window = glfw.Window.create(640, 480, "OceanMan", null, null, .{}) orelse {
+    const window = glfw.Window.create(1600, 900, "OceanMan", null, null, .{}) orelse {
         glfw_log.err("Failed to create window: {?s}", .{glfw.getErrorString()});
         std.process.exit(1);
     };
@@ -235,7 +228,6 @@ pub fn main() !void {
     window.setKeyCallback(glfwKeyCallback);
     window.setMouseButtonCallback(glfwMouseCallback);
     window.setCursorPosCallback(glfwCursorCallback);
-    window.setFramebufferSizeCallback(glfwResizeCallback);
     
     var delta_time: f32 = 0.0;
     var last_frame: f32 = @floatCast(f32, glfw.getTime());
