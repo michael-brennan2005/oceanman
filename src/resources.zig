@@ -96,6 +96,15 @@ pub const SceneResource = struct {
         payload_slice.ptr = @ptrCast([*]Payload, &this.payload);
         device.getQueue().writeBuffer(this.buffer, 0, payload_slice);
     }
+
+    pub fn update_raw(this: *SceneResource, device: *gpu.Device, payload: Payload) void {
+        this.payload = payload;
+
+        var payload_slice: []Payload = undefined;
+        payload_slice.len = 1;
+        payload_slice.ptr = @ptrCast([*]Payload, &this.payload);
+        device.getQueue().writeBuffer(this.buffer, 0, payload_slice);
+    }
 };
 
 // One directional light for now.
