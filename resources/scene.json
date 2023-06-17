@@ -1,0 +1,21 @@
+{
+    "light": {
+        "position": [0,0,1],
+        "color": [1, 0.95, 0]
+    },
+
+    "meshes": [
+        {
+            "path": "resources/viper.m3d",
+            "position": [5, 5, 5],
+            "rotation": [0, 0, 0],
+            "scale": [2, 2, 2]
+        },
+        {
+            "path": "resources/bender.m3d",
+            "position": [0, 0, 0],
+            "rotation": [0, 180, 0],
+            "scale": [2, 2, 2]
+        }
+    ]
+}

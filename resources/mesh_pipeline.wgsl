@@ -7,7 +7,7 @@ struct SceneUniforms {
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
 
 struct LightingUniforms {
-    pos: vec4<f32>,
+    direction: vec4<f32>,
     color: vec4<f32>
 }
 
@@ -56,7 +56,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(texture)));
     var surface_color = textureLoad(texture, texelCoords, 0).rgb;
 
-    var light_dir = normalize(lighting.pos.xyz - in.world_position);
+    var light_dir = -1.0 * lighting.direction.xyz;
     var view_dir = normalize(scene.camera_pos - in.world_position);
     var normal = normalize(in.normal);
     var reflected = 2.0 * dot(light_dir, normal) * normal - light_dir;
@@ -69,5 +69,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         specular = vec3<f32>(0.0, 0.0, 0.0);
     }
     var color = ambient + diffuse + specular;
-    return vec4<f32>( color.xyz, 1.0);
+    return vec4<f32>(color.xyz, 1.0);
 }
