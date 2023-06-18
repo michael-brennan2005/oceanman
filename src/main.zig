@@ -123,6 +123,16 @@ inline fn deviceErrorCallback(
     std.process.exit(1);
 }
 
+inline fn deviceLostCallback(
+    context: *usize,
+    typ: gpu.Device.LostReason,
+    message: [*:0]const u8
+) void {
+    _ = context;
+    wgpu_log.err("Device lost callback: {s} ({?})", .{message, typ});
+    std.process.exit(1);
+}
+
 // MARK: Main
 var renderer_handle: ?*Renderer = null;
 
@@ -199,18 +209,23 @@ pub fn main() !void {
     var limits: gpu.SupportedLimits = .{};
     _ = response.?.adapter.getLimits(&limits);
     wgpu_log.info("{?}", .{limits.limits});
+    
+    var properties: gpu.Adapter.Properties = std.mem.zeroes(gpu.Adapter.Properties);
+    response.?.adapter.getProperties(&properties);
+    wgpu_log.info("Vendor name: {s}, Architecture: {s}, Name: {s}, Driver Description: {s}", .{properties.vendor_name, properties.architecture, properties.name, properties.driver_description});
 
     var device: ?*gpu.Device = response.?.adapter.createDevice(null);
-
+    
     if (device == null) {
         wgpu_log.err("Failed to create device.", .{});
         std.process.exit(1);
     }
-
+    
     var num: usize = 0;
     device.?.setLoggingCallback(&num, deviceLoggingCallback);
     device.?.setUncapturedErrorCallback(&num, deviceErrorCallback);
-
+    device.?.setDeviceLostCallback(&num, deviceLostCallback);
+    
     var surface = createSurfaceForWindow(instance, window, comptime detectGLFWOptions());
 
     var args = std.process.argsAlloc(gpa.allocator()) catch unreachable;

@@ -6,13 +6,6 @@ struct SceneUniforms {
 
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
 
-struct LightingUniforms {
-    direction: vec4<f32>,
-    color: vec4<f32>
-}
-
-@group(1) @binding(0) var<uniform> lighting: LightingUniforms;
-
 struct MeshUniforms {
     model: mat4x4<f32>,
     normal: mat4x4<f32>
@@ -39,6 +32,6 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.clip_space_position.z, in.clip_space_position.z, in.clip_space_position.z, 1.0);
+fn fs_main(in: VertexOutput)  {
+
 }
