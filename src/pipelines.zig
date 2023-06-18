@@ -109,14 +109,7 @@ pub fn shadowMapPipeline(gpa: std.mem.Allocator, device: *gpu.Device, scene_reso
             .module = shader_module.module,
             .entry_point = "fs_main",
             .targets = &.{
-                gpu.ColorTargetState {
-                    .format = .bgra8_unorm,
-                    .blend = &gpu.BlendState {
-                        .color = .{},
-                        .alpha = .{}
-                    },
-                    .write_mask = gpu.ColorWriteMaskFlags.all
-                }
+                
             }
         }),
         .primitive = .{},

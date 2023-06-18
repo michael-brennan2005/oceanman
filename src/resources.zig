@@ -13,7 +13,7 @@ pub const ShaderResource = struct {
     pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, path: []const u8) ShaderResource {
         var file = std.fs.cwd().openFile(path, .{ .mode = std.fs.File.OpenMode.read_only }) catch unreachable;
         defer file.close();
-        const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
+        const file_contents = file.readToEndAlloc(gpa, 1000000) catch unreachable;
         defer gpa.free(file_contents);    
         const shader_source = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
         defer gpa.free(shader_source);
@@ -204,7 +204,7 @@ pub const MeshResource = struct {
         // FIXME: cmon man - sentinel b.s
         var file = std.fs.cwd().openFile(path, .{}) catch unreachable;
         defer file.close();
-        const file_contents = file.readToEndAlloc(gpa, std.math.inf_u64) catch unreachable;
+        const file_contents = file.readToEndAlloc(gpa, 1000000) catch unreachable;
         defer gpa.free(file_contents);    
         const file_sentinel = gpa.alloc(u8, file_contents.len + 1) catch unreachable;
         defer gpa.free(file_sentinel);
@@ -219,8 +219,7 @@ pub const MeshResource = struct {
         const faces: []model3d.Face = model.handle.face[0..model.handle.numface];
         var buffer_toreturn = std.ArrayList(f32).init(gpa);
         for (faces) |face| {
-            for (0..3) |i| {
-                try buffer_toreturn.append(vertices[face.vertex[i]].x);
+            for (0..3) |i| { try buffer_toreturn.append(vertices[face.vertex[i]].x);
                 try buffer_toreturn.append(vertices[face.vertex[i]].y);
                 try buffer_toreturn.append(vertices[face.vertex[i]].z);
                 try buffer_toreturn.append(vertices[face.normal[i]].x);

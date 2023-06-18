@@ -28,6 +28,9 @@ queue: *gpu.Queue,
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
+shadowmap_texture: *gpu.Texture,
+shadowmap_texture_view: *gpu.TextureView,
+
 camera: Camera,
 
 mesh_pipeline: *MeshPipeline,
@@ -218,7 +221,6 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .dimension = gpu.TextureView.Dimension.dimension_2d,
         .format = gpu.Texture.Format.depth24_plus
     });
-    _ = shadowmap_texture_view;
 
     var resources = loadFromFile(gpa, device, path);
         
@@ -247,6 +249,8 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .depth_texture_view = depth_texture_view,
         .mesh_pipeline = mesh_pipeline,
         .shadowmap_pipeline = shadowMapPipeline(gpa, device, scene_resource, resources.lighting, resources.meshes[0]),
+        .shadowmap_texture_view = shadowmap_texture_view,
+        .shadowmap_texture = shadowmap_texture,
         .lighting_resource = resources.lighting,
         .scene_resource = scene_resource,
         .scene_resource_shadowmap = scene_resource_shadowmap,
@@ -267,6 +271,41 @@ pub fn update(this: *Renderer, dt: f32) void {
     var encoder = this.device.createCommandEncoder(&.{});
     defer encoder.release();
     var shadow_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
+        .label = "Shadow Pass",
+        .color_attachments = &.{
+            
+        },
+        .depth_stencil_attachment = &gpu.RenderPassDepthStencilAttachment {
+            .view = this.depth_texture.createView(&gpu.TextureView.Descriptor {
+                .aspect = gpu.Texture.Aspect.depth_only,
+                .base_array_layer = 0,
+                .array_layer_count = 1,
+                .base_mip_level = 0,
+                .mip_level_count = 1,
+                .dimension = gpu.TextureView.Dimension.dimension_2d,
+                .format = gpu.Texture.Format.depth24_plus
+            }),
+            .depth_clear_value = 1.0,
+            .depth_load_op = gpu.LoadOp.clear,
+            .depth_store_op = gpu.StoreOp.store,
+            .depth_read_only = false
+        }
+    }));
+
+    defer shadow_pass.release();
+    shadow_pass.setPipeline(this.shadowmap_pipeline);
+    shadow_pass.setBindGroup(0, this.scene_resource_shadowmap.bg, null);
+    shadow_pass.setBindGroup(1, this.lighting_resource.bg, null);
+
+    for (this.mesh_resources) |mesh_resource| {
+        shadow_pass.setBindGroup(2, mesh_resource.bg, null);
+        shadow_pass.setVertexBuffer(0, mesh_resource.vertex_buffer, 0, mesh_resource.vertex_buffer_count * 8 * @sizeOf(f32));
+        shadow_pass.draw(@intCast(u32,mesh_resource.vertex_buffer_count), 1, 0, 0);
+    }
+
+    shadow_pass.end();
+
+    var render_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
         .label = "Render Pass",
         .color_attachments = &.{
             gpu.RenderPassColorAttachment {
@@ -292,53 +331,14 @@ pub fn update(this: *Renderer, dt: f32) void {
             .depth_read_only = false
         }
     }));
-    defer shadow_pass.release();
-    shadow_pass.setPipeline(this.shadowmap_pipeline);
-    shadow_pass.setBindGroup(0, this.scene_resource_shadowmap.bg, null);
-    shadow_pass.setBindGroup(1, this.lighting_resource.bg, null);
+    defer render_pass.release();
 
-    for (this.mesh_resources) |mesh_resource| {
-        shadow_pass.setBindGroup(2, mesh_resource.bg, null);
-        shadow_pass.setVertexBuffer(0, mesh_resource.vertex_buffer, 0, mesh_resource.vertex_buffer_count * 8 * @sizeOf(f32));
-        shadow_pass.draw(@intCast(u32,mesh_resource.vertex_buffer_count), 1, 0, 0);
-    }
+    this.scene_resource.update(this.device, 1600.0 / 900.0, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
 
-    shadow_pass.end();
+    this.mesh_pipeline.update(render_pass);
 
-    //var render_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
-    //    .label = "Render Pass",
-    //    .color_attachments = &.{
-    //        gpu.RenderPassColorAttachment {
-    //            .clear_value = gpu.Color { .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
-    //            .load_op = gpu.LoadOp.clear,
-    //            .store_op = gpu.StoreOp.store,
-    //            .view = next_texture
-    //        }
-    //    },
-    //    .depth_stencil_attachment = &gpu.RenderPassDepthStencilAttachment {
-    //        .view = this.depth_texture.createView(&gpu.TextureView.Descriptor {
-    //            .aspect = gpu.Texture.Aspect.depth_only,
-    //            .base_array_layer = 0,
-    //            .array_layer_count = 1,
-    //            .base_mip_level = 0,
-    //            .mip_level_count = 1,
-    //            .dimension = gpu.TextureView.Dimension.dimension_2d,
-    //            .format = gpu.Texture.Format.depth24_plus
-    //        }),
-    //        .depth_clear_value = 1.0,
-    //        .depth_load_op = gpu.LoadOp.clear,
-    //        .depth_store_op = gpu.StoreOp.store,
-    //        .depth_read_only = false
-    //    }
-    //}));
-    //defer render_pass.release();
-//
-    //this.scene_resource.update(this.device, 1600.0 / 900.0, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
-//
-    //this.mesh_pipeline.update(render_pass);
-//
-    //render_pass.end();
-    //    
+    render_pass.end();
+        
     var commands = encoder.finish(&.{});
     defer commands.release();
     

@@ -2577,7 +2577,7 @@ pub fn inverseDet(m: Mat, out_det: ?*F32x4) Mat {
         out_det.?.* = det;
     }
 
-    if (math.approxEqAbs(f32, det[0], 0.0, math.f32_epsilon)) {
+    if (math.approxEqAbs(f32, det[0], 0.0, math.floatEps(f32))) {
         return .{
             f32x4(0.0, 0.0, 0.0, 0.0),
             f32x4(0.0, 0.0, 0.0, 0.0),
@@ -2979,7 +2979,7 @@ pub inline fn conjugate(quat: Quat) Quat {
 fn inverseQuat(quat: Quat) Quat {
     const l = lengthSq4(quat);
     const conj = conjugate(quat);
-    return select(l <= splat(F32x4, math.f32_epsilon), splat(F32x4, 0.0), conj / l);
+    return select(l <= splat(F32x4, math.floatEps(f32)), splat(F32x4, 0.0), conj / l);
 }
 test "zmath.quaternion.inverseQuat" {
     try expect(approxEqAbs(
@@ -3169,7 +3169,7 @@ pub fn rgbToHsl(rgb: F32x4) F32x4 {
     const d = maxv - minv;
     const la = select(boolx4(true, true, true, false), l, rgb);
 
-    if (all(d < f32x4s(math.f32_epsilon), 3)) {
+    if (all(d < f32x4s(math.floatEps(f32)), 3)) {
         return select(boolx4(true, true, false, false), f32x4s(0.0), la);
     } else {
         var s: F32x4 = undefined;
@@ -3235,7 +3235,7 @@ pub fn hslToRgb(hsl: F32x4) F32x4 {
     const s = swizzle(hsl, .y, .y, .y, .y);
     const l = swizzle(hsl, .z, .z, .z, .z);
 
-    if (all(isNearEqual(s, f32x4s(0.0), f32x4s(math.f32_epsilon)), 3)) {
+    if (all(isNearEqual(s, f32x4s(0.0), f32x4s(math.floatEps(f32))), 3)) {
         return select(boolx4(true, true, true, false), l, hsl);
     } else {
         const h = swizzle(hsl, .x, .x, .x, .x);
@@ -3295,9 +3295,9 @@ pub fn rgbToHsv(rgb: F32x4) F32x4 {
     const minv = min(r, min(g, b));
     const v = max(r, max(g, b));
     const d = v - minv;
-    const s = if (all(isNearEqual(v, f32x4s(0.0), f32x4s(math.f32_epsilon)), 3)) f32x4s(0.0) else d / v;
+    const s = if (all(isNearEqual(v, f32x4s(0.0), f32x4s(math.floatEps(f32))), 3)) f32x4s(0.0) else d / v;
 
-    if (all(d < f32x4s(math.f32_epsilon), 3)) {
+    if (all(d < f32x4s(math.floatEps(f32)), 3)) {
         const hv = select(boolx4(true, false, false, false), f32x4s(0.0), v);
         const hva = select(boolx4(true, true, true, false), hv, rgb);
         return select(boolx4(true, false, true, true), hva, s);
