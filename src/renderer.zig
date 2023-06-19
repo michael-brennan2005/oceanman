@@ -16,6 +16,7 @@ const shadowMapPipeline = @import("pipelines.zig").shadowMapPipeline;
 const SceneResource = @import("resources.zig").SceneResource;
 const LightingResource = @import("resources.zig").LightingResource;
 const MeshResource = @import("resources.zig").MeshResource;
+const ShadowResource = @import("resources.zig").ShadowResource;
 
 const Renderer = @This();
 const log = std.log.scoped(.oceanman);
@@ -28,9 +29,6 @@ queue: *gpu.Queue,
 depth_texture: *gpu.Texture,
 depth_texture_view: *gpu.TextureView,
 
-shadowmap_texture: *gpu.Texture,
-shadowmap_texture_view: *gpu.TextureView,
-
 camera: Camera,
 
 mesh_pipeline: *MeshPipeline,
@@ -38,6 +36,7 @@ shadowmap_pipeline: *gpu.RenderPipeline,
 
 scene_resource: *SceneResource,
 lighting_resource: *LightingResource,
+shadow_resource: *ShadowResource,
 mesh_resources: []*MeshResource,
 
 // MARK: input/glfw callbacks
@@ -191,43 +190,17 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .format = gpu.Texture.Format.depth24_plus
     });
 
-    // Shadowmap texture
-    const shadowmap_texture = device.createTexture(&gpu.Texture.Descriptor.init(.{
-        .label = "Shadow texture",
-        .usage = gpu.Texture.UsageFlags {
-            .render_attachment = true,
-            .texture_binding = true
-        },
-        .dimension = gpu.Texture.Dimension.dimension_2d,
-        .format = gpu.Texture.Format.depth24_plus,
-        .size = gpu.Extent3D {
-            .depth_or_array_layers = 1,
-            .width = 1600,
-            .height = 900
-        },
-        .view_formats = &.{
-            gpu.Texture.Format.depth24_plus
-        }
-    }));
-
-    const shadowmap_texture_view = shadowmap_texture.createView(&gpu.TextureView.Descriptor {
-        .label = "Shadow texture view",
-        .aspect = gpu.Texture.Aspect.depth_only,
-        .base_array_layer = 0,
-        .array_layer_count = 1,
-        .base_mip_level = 0,
-        .mip_level_count = 1,
-        .dimension = gpu.TextureView.Dimension.dimension_2d,
-        .format = gpu.Texture.Format.depth24_plus
-    });
-
+    
     var resources = loadFromFile(gpa, device, path);
         
     var scene_resource = gpa.create(SceneResource) catch unreachable;
     scene_resource.* = SceneResource.init(device);
 
+    var shadow_resource = gpa.create(ShadowResource) catch unreachable;
+    shadow_resource.* = ShadowResource.init(device);
+
     var mesh_pipeline = gpa.create(MeshPipeline) catch unreachable;
-    mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, resources.lighting, resources.meshes);
+    mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, resources.lighting, resources.meshes, shadow_resource);
 
     log.info("renderer initialized!", .{});
     return .{ 
@@ -239,10 +212,9 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .depth_texture_view = depth_texture_view,
         .mesh_pipeline = mesh_pipeline,
         .shadowmap_pipeline = shadowMapPipeline(gpa, device, scene_resource, resources.lighting, resources.meshes[0]),
-        .shadowmap_texture_view = shadowmap_texture_view,
-        .shadowmap_texture = shadowmap_texture,
         .lighting_resource = resources.lighting,
         .scene_resource = scene_resource,
+        .shadow_resource = shadow_resource,
         .mesh_resources = resources.meshes,
         .camera = .{}
     };
@@ -267,15 +239,7 @@ pub fn update(this: *Renderer, dt: f32) void {
             
         },
         .depth_stencil_attachment = &gpu.RenderPassDepthStencilAttachment {
-            .view = this.depth_texture.createView(&gpu.TextureView.Descriptor {
-                .aspect = gpu.Texture.Aspect.depth_only,
-                .base_array_layer = 0,
-                .array_layer_count = 1,
-                .base_mip_level = 0,
-                .mip_level_count = 1,
-                .dimension = gpu.TextureView.Dimension.dimension_2d,
-                .format = gpu.Texture.Format.depth24_plus
-            }),
+            .view = this.shadow_resource.shadowmap_texture_view,
             .depth_clear_value = 1.0,
             .depth_load_op = gpu.LoadOp.clear,
             .depth_store_op = gpu.StoreOp.store,
@@ -326,7 +290,7 @@ pub fn update(this: *Renderer, dt: f32) void {
     defer render_pass.release();
 
     this.scene_resource.update(this.device, 1600.0 / 900.0, this.camera.position, this.camera.position + this.camera.front, this.camera.up);
-
+    render_pass.setBindGroup(3, this.shadow_resource.bg, null);
     this.mesh_pipeline.update(render_pass);
 
     render_pass.end();

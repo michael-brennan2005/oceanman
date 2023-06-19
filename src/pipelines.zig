@@ -12,6 +12,8 @@ const LightingResource = @import("resources.zig").LightingResource;
 const SceneResource = @import("resources.zig").SceneResource;
 const MeshResource = @import("resources.zig").MeshResource;
 const ShaderResource = @import("resources.zig").ShaderResource;
+const ShadowResource = @import("resources.zig").ShadowResource;
+
 const UntexturedMeshResource = @import("resources.zig").UntexturedMeshResource;
 
 pub const MeshPipeline = struct {
@@ -22,13 +24,13 @@ pub const MeshPipeline = struct {
     scene_resource: *SceneResource,
     mesh_resources: []*MeshResource,
 
-    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue,  scene_resource: *SceneResource, lighting_resource: *LightingResource, mesh_resources: []*MeshResource) MeshPipeline {
+    pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, queue: *gpu.Queue,  scene_resource: *SceneResource, lighting_resource: *LightingResource, mesh_resources: []*MeshResource, shadow_resource: *ShadowResource) MeshPipeline {
         var shader_module = ShaderResource.init(gpa, device, "resources/mesh_pipeline.wgsl");
         
         var pipeline = device.createRenderPipeline(&gpu.RenderPipeline.Descriptor {
             .label = "OceanMan mesh pipeline",
             .layout = device.createPipelineLayout(&gpu.PipelineLayout.Descriptor.init(.{
-                .bind_group_layouts = &.{ scene_resource.bg_layout, lighting_resource.bg_layout, mesh_resources[0].bg_layout }
+                .bind_group_layouts = &.{ scene_resource.bg_layout, lighting_resource.bg_layout, mesh_resources[0].bg_layout, shadow_resource.bg_layout }
             })),
             .vertex = gpu.VertexState.init(.{
                 .module = shader_module.module,
@@ -76,7 +78,7 @@ pub const MeshPipeline = struct {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, this.scene_resource.bg, null);
         pass.setBindGroup(1, this.lighting_resource.bg, null);
-
+        
         for (this.mesh_resources) |mesh_resource| {
              pass.setBindGroup(2, mesh_resource.bg, null);
             pass.setVertexBuffer(0, mesh_resource.vertex_buffer, 0, mesh_resource.vertex_buffer_count * 8 * @sizeOf(f32));

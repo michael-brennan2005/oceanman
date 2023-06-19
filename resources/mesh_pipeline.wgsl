@@ -8,7 +8,8 @@ struct SceneUniforms {
 
 struct LightingUniforms {
     direction: vec4<f32>,
-    color: vec4<f32>
+    color: vec4<f32>,
+    projection_matrix: mat4x4<f32>
 }
 
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
@@ -21,6 +22,9 @@ struct MeshUniforms {
 @group(2) @binding(0) var<uniform> mesh: MeshUniforms;
 @group(2) @binding(1) var texture: texture_2d<f32>;
 
+@group(3) @binding(0) var shadowmap: texture_depth_2d;
+@group(3) @binding(1) var shadowmap_sampler: sampler_comparison;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -31,7 +35,8 @@ struct VertexOutput {
     @builtin(position) clip_space_position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>
+    @location(2) uv: vec2<f32>,
+    @location(3) shadow_coord: vec3<f32>
 }
 
 @vertex
@@ -42,6 +47,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.clip_space_position = scene.perspective * scene.view * mesh.model * vec4<f32>(in.position.xyz, 1.0);
     out.world_position = (mesh.model * vec4<f32>(in.position,1.0)).xyz;
     out.uv = in.uv;
+    let shadowmap_pos = lighting.projection_matrix * mesh.model * vec4<f32>(in.position.xyz, 1.0) - vec4<f32>(0.0, 0.0, 1.0, 0.0); 
+    out.shadow_coord = vec3(shadowmap_pos.xy * vec2(0.5, -0.5) + vec2(0.5), shadowmap_pos.z);
 	return out;
 }
 
@@ -68,6 +75,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     if (clamp(dot(light_dir, normal), 0.0, 1.0) <= 0.0) {
         specular = vec3<f32>(0.0, 0.0, 0.0);
     }
-    var color = ambient + diffuse + specular;
+    
+    var visibility = 0.0;
+    let oneOver = 1.0 / 1024.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(vec2(x, y)) * oneOver;
+
+            visibility += textureSampleCompare(
+                shadowmap, shadowmap_sampler,
+                in.shadow_coord.xy + offset, in.shadow_coord.z - 0.007
+            );
+        }
+    }
+    visibility /= 9.0;
+    var color = ambient + visibility * (diffuse + specular);
     return vec4<f32>(color.xyz, 1.0);
 }

@@ -35,7 +35,7 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_space_position = lighting.projection_matrix * mesh.model * vec4<f32>(in.position, 1.0);
+    out.clip_space_position = lighting.projection_matrix * mesh.model * vec4<f32>(in.position, 1.0) - vec4<f32>(0.0, 0.0, 1.0, 0.0);
 	return out;
 }
 
