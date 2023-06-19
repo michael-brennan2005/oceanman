@@ -37,7 +37,6 @@ mesh_pipeline: *MeshPipeline,
 shadowmap_pipeline: *gpu.RenderPipeline,
 
 scene_resource: *SceneResource,
-scene_resource_shadowmap: *SceneResource,
 lighting_resource: *LightingResource,
 mesh_resources: []*MeshResource,
 
@@ -227,15 +226,6 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
     var scene_resource = gpa.create(SceneResource) catch unreachable;
     scene_resource.* = SceneResource.init(device);
 
-
-    var scene_resource_shadowmap = gpa.create(SceneResource) catch unreachable;
-    scene_resource_shadowmap.* = SceneResource.init(device);
-    scene_resource_shadowmap.update_raw(device, .{
-        .perspective = zmath.orthographicOffCenterLh(-10.0, 10.0, 10.0, -10.0, -10.0, 10.0),
-        .view = zmath.lookAtLh(zmath.inverse(resources.lighting.payload.direction), zmath.f32x4(0.0, 0.0, 0.0, 1.0), zmath.f32x4(0.0, 1.0, 0.0, 1.0)),
-        .camera_pos = zmath.f32x4(0.0, 0.0, 0.0, 0.0)
-    });
-
     var mesh_pipeline = gpa.create(MeshPipeline) catch unreachable;
     mesh_pipeline.* = MeshPipeline.init(gpa, device, queue, scene_resource, resources.lighting, resources.meshes);
 
@@ -253,7 +243,6 @@ pub fn init(gpa: std.mem.Allocator, device: *gpu.Device, surface: *gpu.Surface, 
         .shadowmap_texture = shadowmap_texture,
         .lighting_resource = resources.lighting,
         .scene_resource = scene_resource,
-        .scene_resource_shadowmap = scene_resource_shadowmap,
         .mesh_resources = resources.meshes,
         .camera = .{}
     };
@@ -266,10 +255,12 @@ pub fn update(this: *Renderer, dt: f32) void {
     this.camera.update(dt);
 
     var next_texture = this.swapchain.getCurrentTextureView();
-    defer next_texture.release();
+    defer next_texture.?.release();
 
     var encoder = this.device.createCommandEncoder(&.{});
     defer encoder.release();
+    
+    // SHADOW PASS
     var shadow_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
         .label = "Shadow Pass",
         .color_attachments = &.{
@@ -294,7 +285,7 @@ pub fn update(this: *Renderer, dt: f32) void {
 
     defer shadow_pass.release();
     shadow_pass.setPipeline(this.shadowmap_pipeline);
-    shadow_pass.setBindGroup(0, this.scene_resource_shadowmap.bg, null);
+    shadow_pass.setBindGroup(0, this.scene_resource.bg, null);
     shadow_pass.setBindGroup(1, this.lighting_resource.bg, null);
 
     for (this.mesh_resources) |mesh_resource| {
@@ -304,7 +295,8 @@ pub fn update(this: *Renderer, dt: f32) void {
     }
 
     shadow_pass.end();
-
+    
+    // RENDER PASS
     var render_pass = encoder.beginRenderPass(&gpu.RenderPassDescriptor.init(.{
         .label = "Render Pass",
         .color_attachments = &.{

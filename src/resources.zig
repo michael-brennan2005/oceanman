@@ -111,7 +111,8 @@ pub const SceneResource = struct {
 pub const LightingResource = struct {
     pub const Payload = extern struct {
         direction: zmath.Vec = zmath.f32x4(5.0, 5.0, 5.0, 1.0),
-        color: zmath.Vec = zmath.f32x4(1.0, 1.0, 1.0, 1.0)
+        color: zmath.Vec = zmath.f32x4(1.0, 1.0, 1.0, 1.0),
+        projection_matrix: zmath.Mat = zmath.identity()
     };
 
     payload: Payload = .{},
@@ -137,9 +138,13 @@ pub const LightingResource = struct {
         // TODO: get this to load in from somewhere
         resource.payload = .{
             .direction = zmath.normalize3(zmath.f32x4(direction[0], direction[1], direction[2], 0.0)),
-            .color = zmath.f32x4(color[0], color[1], color[2], 1.0)
+            .color = zmath.f32x4(color[0], color[1], color[2], 1.0),
         };
         
+        resource.payload.projection_matrix = zmath.mul(
+                zmath.orthographicOffCenterLh(-10.0, 10.0, 10.0, -10.0, -10.0, 10.0), 
+                zmath.lookAtLh(zmath.inverse(resource.payload.direction), zmath.f32x4(0.0, 0.0, 0.0, 1.0), zmath.f32x4(0.0, 1.0, 0.0, 1.0)));
+
         var payload_slice: []Payload = undefined;
         payload_slice.len = 1;
         payload_slice.ptr = @ptrCast([*]Payload, &resource.payload);

@@ -36,7 +36,7 @@ pub fn build(b: *std.Build) !void {
         .dependencies = &.{},
     });
     exe.addModule("zmath", zmath_module);
-    
+
     exe.addModule("model3d", model3d_sdk.module(b));
     model3d_sdk.link(b, exe, target);
 
