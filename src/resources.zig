@@ -77,6 +77,7 @@ pub const SceneResource = struct {
         }));
 
         resource.bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .label = "Scene bind group",
             .layout = resource.bg_layout,
             .entries = &.{
                 gpu.BindGroup.Entry.buffer(0, resource.buffer, 0, @sizeOf(Payload))
@@ -142,7 +143,7 @@ pub const LightingResource = struct {
         };
         
         resource.payload.projection_matrix = zmath.mul(
-                zmath.orthographicOffCenterLh(-10.0, 10.0, 10.0, -10.0, -10.0, 10.0), 
+                zmath.orthographicOffCenterLh(-5.0, 5.0, 5.0, -5.0, -10.0, 10.0), 
                 zmath.lookAtLh(zmath.inverse(resource.payload.direction), zmath.f32x4(0.0, 0.0, 0.0, 1.0), zmath.f32x4(0.0, 1.0, 0.0, 1.0)));
 
         var payload_slice: []Payload = undefined;
@@ -166,9 +167,89 @@ pub const LightingResource = struct {
         }));
 
         resource.bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .label = "Lighting bind group",
             .layout = resource.bg_layout,
             .entries = &.{
                 gpu.BindGroup.Entry.buffer(0, resource.buffer, 0, @sizeOf(Payload))
+            }
+        }));
+
+        return resource;
+    }
+};
+
+pub const ShadowResource = struct {
+    bg_layout: *gpu.BindGroupLayout = undefined,
+    bg: *gpu.BindGroup = undefined,
+
+    shadowmap_texture: *gpu.Texture = undefined,
+    shadowmap_texture_view: *gpu.TextureView = undefined,
+
+    pub fn init(device: *gpu.Device) ShadowResource {
+        const queue = device.getQueue();
+        _ = queue;
+        var resource: ShadowResource = .{};
+            
+        resource.shadowmap_texture = device.createTexture(&gpu.Texture.Descriptor.init(.{
+            .label = "Shadow texture",
+            .usage = gpu.Texture.UsageFlags {
+                .render_attachment = true,
+                .texture_binding = true
+            },
+            .dimension = gpu.Texture.Dimension.dimension_2d,
+            .format = gpu.Texture.Format.depth24_plus,
+            .size = gpu.Extent3D {
+                .depth_or_array_layers = 1,
+                .width = 1600,
+                .height = 900
+            },
+            .view_formats = &.{
+                gpu.Texture.Format.depth24_plus
+            }
+        }));
+
+        resource.shadowmap_texture_view = resource.shadowmap_texture.createView(&gpu.TextureView.Descriptor {
+            .label = "Shadow texture view",
+            .aspect = gpu.Texture.Aspect.depth_only,
+            .base_array_layer = 0,
+            .array_layer_count = 1,
+            .base_mip_level = 0,
+            .mip_level_count = 1,
+            .dimension = gpu.TextureView.Dimension.dimension_2d,
+            .format = gpu.Texture.Format.depth24_plus
+        });
+
+        resource.bg_layout = device.createBindGroupLayout(&gpu.BindGroupLayout.Descriptor.init(.{
+            .label = "Shadow bind group layout",
+            .entries = &.{
+                gpu.BindGroupLayout.Entry.texture(
+                    0, 
+                    gpu.ShaderStageFlags {
+                        .vertex = true,
+                        .fragment = true
+                    }, 
+                    gpu.Texture.SampleType.depth, 
+                    gpu.TextureView.Dimension.dimension_2d,
+                    false),
+                gpu.BindGroupLayout.Entry.sampler(
+                    1,
+                    gpu.ShaderStageFlags {
+                        .vertex = true,
+                        .fragment = true
+                    },
+                    gpu.Sampler.BindingType.comparison
+                )
+            }
+        }));
+
+        resource.bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .label = "Shadow bind group",
+            .layout = resource.bg_layout,
+            .entries = &.{
+                gpu.BindGroup.Entry.textureView(0, resource.shadowmap_texture_view),
+                gpu.BindGroup.Entry.sampler(1, device.createSampler(&gpu.Sampler.Descriptor {
+                    .compare = gpu.CompareFunction.less
+                }))
             }
         }));
 
@@ -366,6 +447,7 @@ pub const MeshResource = struct {
         }));
 
         var bg = device.createBindGroup(&gpu.BindGroup.Descriptor.init(.{
+            .label = "Mesh bind group",
             .layout = bg_layout,
             .entries = &.{
                 gpu.BindGroup.Entry.buffer(0, uniform_buffer, 0, @sizeOf(UniformPayload)),
