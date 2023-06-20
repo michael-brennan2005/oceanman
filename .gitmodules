@@ -1,8 +1,0 @@
-[submodule "libs/mach-glfw"]
-	url = https://github.com/hexops/mach-glfw
-[submodule "libs/mach-gpu-dawn"]
-	url = https://github.com/hexops/mach-gpu-dawn.git
-[submodule "libs/mach-model3d"]
-	url = https://github.com/hexops/mach-model3d
-[submodule "libs/mach-gpu"]
-	url = https://github.com/hexops/mach-gpu
