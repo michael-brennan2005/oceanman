@@ -1,6 +1,6 @@
 use std::fs;
 
-use glam::{vec3, Mat4};
+use glam::{vec3, vec4, Mat4};
 use winit::{
     event::{self, WindowEvent},
     window::Window,
@@ -9,7 +9,10 @@ use winit::{
 use crate::{
     camera::Camera,
     loader,
-    resources::{mesh_pipeline, Mesh, MeshUniformData, SceneUniform, SceneUniformData, Texture},
+    resources::{
+        mesh_pipeline, LightingUniform, LightingUniformData, Mesh, MeshUniformData, SceneUniform,
+        SceneUniformData, Texture,
+    },
 };
 
 pub struct Renderer {
@@ -23,6 +26,7 @@ pub struct Renderer {
     depth_buffer: Texture,
 
     scene_uniform: SceneUniform,
+    lighting_uniform: LightingUniform,
     mesh: Mesh,
     mesh_pipeline: wgpu::RenderPipeline,
 }
@@ -86,6 +90,14 @@ impl Renderer {
         let depth_buffer = Texture::create_depth_texture(&device, &config);
 
         let scene_uniform = SceneUniform::new(&device, SceneUniformData::new_from_camera(&camera));
+        let lighting_uniform = LightingUniform::new(
+            &device,
+            LightingUniformData {
+                direction: vec4(0.0, 0.0, 1.0, 0.0),
+                color: vec4(1.0, 1.0, 1.0, 1.0),
+            },
+        );
+
         let (vertex_buffer, vertex_count) =
             loader::vertex_buffer_from_file(&device, String::from("resources/Grass_Block.obj"));
 
@@ -115,6 +127,7 @@ impl Renderer {
             camera,
             depth_buffer,
             scene_uniform,
+            lighting_uniform,
             mesh,
             mesh_pipeline,
         }
@@ -170,7 +183,8 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.mesh_pipeline);
             render_pass.set_bind_group(0, &self.scene_uniform.uniform_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.mesh.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.lighting_uniform.uniform_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.mesh.bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.mesh.vertex_buffer.slice(..));
             render_pass.draw(0..self.mesh.vertex_count, 0..1);

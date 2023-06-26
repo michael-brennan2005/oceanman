@@ -1,6 +1,4 @@
-use std::{fs, rc::Rc};
-
-use glam::{vec4, Mat4, Vec3, Vec4};
+use glam::{vec4, Mat4, Vec4};
 use wgpu::{
     util::DeviceExt, BlendState, Device, FragmentState, MultisampleState, PipelineLayoutDescriptor,
     PrimitiveState, RenderPipeline, VertexBufferLayout, VertexState,
@@ -71,6 +69,66 @@ impl SceneUniform {
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Scene uniform bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::all(),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        })
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct LightingUniformData {
+    pub direction: Vec4,
+    pub color: Vec4,
+}
+
+pub struct LightingUniform {
+    pub uniform_buffer: wgpu::Buffer,
+    pub uniform_bind_group: wgpu::BindGroup,
+}
+
+unsafe impl bytemuck::Pod for LightingUniformData {}
+unsafe impl bytemuck::Zeroable for LightingUniformData {}
+
+// TODO: write out the min_binding_sizes (avoid checks at draw call)
+impl LightingUniform {
+    pub fn new(device: &wgpu::Device, data: LightingUniformData) -> Self {
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Lighting uniform buffer"),
+            contents: bytemuck::cast_slice(&[data]),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+        });
+
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Scene uniform bind group"),
+            layout: &SceneUniform::bind_group_layout(device),
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        LightingUniform {
+            uniform_buffer,
+            uniform_bind_group,
+        }
+    }
+
+    pub fn update(&self, queue: &wgpu::Queue, data: LightingUniformData) {
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[data]));
+    }
+
+    pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Lighting uniform bind group layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::all(),
@@ -331,6 +389,7 @@ pub fn mesh_pipeline(
             label: Some("Mesh pipeline layout"),
             bind_group_layouts: &[
                 &SceneUniform::bind_group_layout(device),
+                &LightingUniform::bind_group_layout(device),
                 &Mesh::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
