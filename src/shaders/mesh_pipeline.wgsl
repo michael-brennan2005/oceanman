@@ -22,17 +22,20 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) clip_space_position: vec4<f32>,
+    @location(0) uv: vec2<f32>
 }
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.clip_space_position = scene.perspective_view * mesh.model * vec4<f32>(in.position, 1.0);
-   
+    out.uv = in.uv;
 	return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return vec4<f32>(in.clip_space_position.zzz, 1.0);
+    var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(texture)));
+    var surface_color = textureLoad(texture, texelCoords, 0).rgb;
+    return vec4<f32>(surface_color, 1.0);
 }

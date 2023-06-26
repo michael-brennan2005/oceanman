@@ -1,3 +1,5 @@
+use std::fs;
+
 use glam::{vec3, Mat4};
 use winit::{
     event::{self, WindowEvent},
@@ -85,12 +87,21 @@ impl Renderer {
 
         let scene_uniform = SceneUniform::new(&device, SceneUniformData::new_from_camera(&camera));
         let (vertex_buffer, vertex_count) =
-            loader::vertex_buffer_from_file(&device, String::from("resources/cube.obj"));
+            loader::vertex_buffer_from_file(&device, String::from("resources/Grass_Block.obj"));
+
+        let texture_bytes = fs::read("resources/Grass_Block_TEX.png").unwrap();
+        let texture = Texture::create_from_bytes(
+            &device,
+            &queue,
+            texture_bytes.as_slice(),
+            Some("Mesh texture"),
+        );
         let mesh = Mesh::new(
             &device,
             vertex_buffer,
             vertex_count,
             MeshUniformData::new(Mat4::from_scale(vec3(0.5, 0.5, 0.5))),
+            texture,
         );
 
         let mesh_pipeline = mesh_pipeline(&device, &config);
@@ -159,7 +170,7 @@ impl Renderer {
 
             render_pass.set_pipeline(&self.mesh_pipeline);
             render_pass.set_bind_group(0, &self.scene_uniform.uniform_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.mesh.uniform_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.mesh.bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, self.mesh.vertex_buffer.slice(..));
             render_pass.draw(0..self.mesh.vertex_count, 0..1);

@@ -28,7 +28,7 @@ pub fn vertex_buffer_from_file(device: &wgpu::Device, path: String) -> (wgpu::Bu
             vertex_vec.push(0.0);
         } else {
             vertex_vec.push(mesh.texcoords[*i as usize * 2]);
-            vertex_vec.push(mesh.texcoords[*i as usize * 2 + 1]);
+            vertex_vec.push(1.0 - mesh.texcoords[*i as usize * 2 + 1]);
         }
     }
 

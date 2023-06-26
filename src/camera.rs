@@ -88,10 +88,10 @@ impl Camera {
                     VirtualKeyCode::D | VirtualKeyCode::Right => {
                         self.is_right_pressed = is_pressed;
                     }
-                    VirtualKeyCode::Q => {
+                    VirtualKeyCode::E => {
                         self.is_up_pressed = is_pressed;
                     }
-                    VirtualKeyCode::E => {
+                    VirtualKeyCode::Q => {
                         self.is_down_pressed = is_pressed;
                     }
                     _ => {}
