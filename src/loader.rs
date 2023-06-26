@@ -1,7 +1,90 @@
+use std::{
+    fmt, fs,
+    path::{self, Path, PathBuf},
+};
+
+use glam::{vec3, vec4, Mat4, U64Vec4, Vec3};
+use serde::{Deserialize, Serialize};
 use tobj;
 use wgpu::util::DeviceExt;
 
-pub fn vertex_buffer_from_file(device: &wgpu::Device, path: String) -> (wgpu::Buffer, u32) {
+use crate::resources::{LightingUniform, LightingUniformData, Mesh, MeshUniformData, Texture};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct LightingConfig {
+    direction: [f32; 3],
+    color: [f32; 3],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MeshConfig {
+    obj: String,
+    texture: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SceneConfig {
+    pub lighting: LightingConfig,
+    pub mesh: MeshConfig,
+}
+
+pub struct Scene {
+    pub mesh: Mesh,
+    pub lighting: LightingUniform,
+}
+
+impl Scene {
+    pub fn from_file(device: &wgpu::Device, queue: &wgpu::Queue, path: String) -> Self {
+        let bytes = fs::read(&path).unwrap();
+        let deserialized: SceneConfig = serde_json::from_slice(&bytes).unwrap();
+
+        let direction = Vec3::from_slice(&deserialized.lighting.direction);
+        let color = Vec3::from_slice(&deserialized.lighting.color);
+
+        let lighting = LightingUniform::new(
+            device,
+            LightingUniformData {
+                direction: (direction, 0.0).into(),
+                color: (color, 1.0).into(),
+            },
+        );
+
+        // FIXME: tons of pathbufs and refs - any better way to do this?
+        let mut root_path = PathBuf::from(&path);
+        root_path.pop();
+
+        let obj_path: PathBuf = [&root_path, &PathBuf::from(&deserialized.mesh.obj)]
+            .iter()
+            .collect();
+        let (vertex_buffer, vertex_count) = vertex_buffer_from_file(&device, obj_path);
+
+        let texture_path: PathBuf = [&root_path, &PathBuf::from(deserialized.mesh.texture)]
+            .iter()
+            .collect();
+
+        let texture_bytes = fs::read(texture_path).unwrap();
+        let texture = Texture::create_from_bytes(
+            &device,
+            &queue,
+            texture_bytes.as_slice(),
+            Some("Mesh texture"),
+        );
+        let mesh = Mesh::new(
+            &device,
+            vertex_buffer,
+            vertex_count,
+            MeshUniformData::new(Mat4::from_scale(vec3(0.5, 0.5, 0.5))),
+            texture,
+        );
+
+        Self { mesh, lighting }
+    }
+}
+
+pub fn vertex_buffer_from_file<P: AsRef<Path> + fmt::Debug>(
+    device: &wgpu::Device,
+    path: P,
+) -> (wgpu::Buffer, u32) {
     let (models, _) = tobj::load_obj(path, &tobj::GPU_LOAD_OPTIONS).unwrap();
 
     let mesh = &models[0].mesh;
