@@ -51,16 +51,23 @@ impl SceneUniformData {
 /// SceneUniformData at slot 0 is for scene pass (rendering to camera),
 /// SceneUniformData at slot 1 is for shadow pass (rendering to shadowmap)
 pub struct SceneUniform {
-    pub uniform_buffer: wgpu::Buffer,
+    pub uniform_buffer_0: wgpu::Buffer,
+    pub uniform_buffer_1: wgpu::Buffer,
     pub uniform_bind_group: wgpu::BindGroup,
 }
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
 impl SceneUniform {
     pub fn new(device: &wgpu::Device, zero: SceneUniformData, one: SceneUniformData) -> Self {
-        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene uniform buffer"),
-            contents: bytemuck::cast_slice(&[zero, one]),
+        let uniform_buffer_0 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene uniform buffer - scene pass uniform"),
+            contents: bytemuck::cast_slice(&[zero]),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+        });
+
+        let uniform_buffer_1 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene uniform buffer - shadow pass uniform"),
+            contents: bytemuck::cast_slice(&[one]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
 
@@ -70,31 +77,29 @@ impl SceneUniform {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(BufferBinding {
-                        buffer: &uniform_buffer,
-                        offset: 0,
-                        size: NonZeroU64::new(std::mem::size_of::<SceneUniformData>() as u64), // pedantic-ass language
-                    }),
+                    resource: wgpu::BindingResource::Buffer(
+                        uniform_buffer_0.as_entire_buffer_binding(),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Buffer(BufferBinding {
-                        buffer: &uniform_buffer,
-                        offset: std::mem::size_of::<SceneUniformData>() as u64,
-                        size: NonZeroU64::new(std::mem::size_of::<SceneUniformData>() as u64), // pedantic-ass language
-                    }),
+                    resource: wgpu::BindingResource::Buffer(
+                        uniform_buffer_1.as_entire_buffer_binding(),
+                    ),
                 },
             ],
         });
 
         SceneUniform {
-            uniform_buffer,
+            uniform_buffer_0,
+            uniform_buffer_1,
             uniform_bind_group,
         }
     }
 
+    // TODO: cover case in which we need to update shadow pass
     pub fn update(&self, queue: &wgpu::Queue, data: SceneUniformData) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[data]));
+        queue.write_buffer(&self.uniform_buffer_0, 0, bytemuck::cast_slice(&[data]));
     }
 
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
