@@ -1,7 +1,9 @@
-use glam::{vec4, Mat4, Vec4};
+use std::num::NonZeroU64;
+
+use glam::{vec3, vec4, Mat4, UVec3, Vec3, Vec4};
 use wgpu::{
-    util::DeviceExt, BlendState, Device, FragmentState, MultisampleState, PipelineLayoutDescriptor,
-    PrimitiveState, RenderPipeline, VertexBufferLayout, VertexState,
+    util::DeviceExt, BlendState, BufferBinding, Device, FragmentState, MultisampleState,
+    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, VertexBufferLayout, VertexState,
 };
 
 use crate::camera::Camera;
@@ -31,8 +33,23 @@ impl SceneUniformData {
             camera_position,
         }
     }
+
+    pub fn shadow(orthographic_projection_size: Vec3, lighting_direction: Vec3) -> Self {
+        // to make the multiplication read easier
+        let ops = orthographic_projection_size;
+        let perspective_view = Mat4::orthographic_lh(-ops.x, ops.x, -ops.y, ops.y, -ops.z, ops.z)
+            * Mat4::look_to_lh(vec3(0.0, 0.0, 0.0), lighting_direction, vec3(0.0, 1.0, 0.0));
+
+        Self {
+            perspective_view,
+            camera_position: vec4(0.0, 0.0, 0.0, 1.0),
+        }
+    }
 }
 
+/// SceneUniform has two SceneUniformData's.
+/// SceneUniformData at slot 0 is for scene pass (rendering to camera),
+/// SceneUniformData at slot 1 is for shadow pass (rendering to shadowmap)
 pub struct SceneUniform {
     pub uniform_buffer: wgpu::Buffer,
     pub uniform_bind_group: wgpu::BindGroup,
@@ -40,20 +57,34 @@ pub struct SceneUniform {
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
 impl SceneUniform {
-    pub fn new(device: &wgpu::Device, data: SceneUniformData) -> Self {
+    pub fn new(device: &wgpu::Device, zero: SceneUniformData, one: SceneUniformData) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Scene uniform buffer"),
-            contents: bytemuck::cast_slice(&[data]),
+            contents: bytemuck::cast_slice(&[zero, one]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Scene uniform bind group"),
             layout: &SceneUniform::bind_group_layout(device),
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(BufferBinding {
+                        buffer: &uniform_buffer,
+                        offset: 0,
+                        size: NonZeroU64::new(std::mem::size_of::<SceneUniformData>() as u64), // pedantic-ass language
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Buffer(BufferBinding {
+                        buffer: &uniform_buffer,
+                        offset: std::mem::size_of::<SceneUniformData>() as u64,
+                        size: NonZeroU64::new(std::mem::size_of::<SceneUniformData>() as u64), // pedantic-ass language
+                    }),
+                },
+            ],
         });
 
         SceneUniform {
@@ -69,16 +100,32 @@ impl SceneUniform {
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Scene uniform bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::all(),
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: NonZeroU64::new(
+                            std::mem::size_of::<SceneUniformData>() as u64
+                        ),
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: NonZeroU64::new(
+                            std::mem::size_of::<SceneUniformData>() as u64
+                        ),
+                    },
+                    count: None,
+                },
+            ],
         })
     }
 }
@@ -375,6 +422,58 @@ fn vertex_buffer_layout() -> VertexBufferLayout<'static> {
             },
         ],
     }
+}
+
+pub fn shadow_pipeline(
+    device: &Device,
+    surface_config: &wgpu::SurfaceConfiguration,
+) -> RenderPipeline {
+    let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shadow_pipeline.wgsl"));
+
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Shadow pipeline"),
+        layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Shadow pipeline layout"),
+            bind_group_layouts: &[
+                &SceneUniform::bind_group_layout(device),
+                &Mesh::bind_group_layout(device),
+            ],
+            push_constant_ranges: &[],
+        })),
+        vertex: VertexState {
+            module: &shader,
+            entry_point: "vs_main",
+            buffers: &[vertex_buffer_layout()],
+        },
+        fragment: Some(FragmentState {
+            module: &shader,
+            entry_point: "fs_main",
+            targets: &[],
+        }),
+        primitive: PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: Texture::DEPTH_FORMAT,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+
+        multiview: None,
+    })
 }
 
 pub fn mesh_pipeline(
