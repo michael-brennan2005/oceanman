@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use tobj;
 use wgpu::util::DeviceExt;
 
-use crate::resources::{LightingUniform, LightingUniformData, Mesh, MeshUniformData, Texture};
+use crate::resources::{
+    LightingUniform, LightingUniformData, Mesh, MeshUniformData, SceneUniform, SceneUniformData,
+    Texture,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct LightingConfig {
@@ -30,6 +33,7 @@ struct SceneConfig {
 
 pub struct Scene {
     pub mesh: Mesh,
+    pub scene: SceneUniform,
     pub lighting: LightingUniform,
 }
 
@@ -47,6 +51,12 @@ impl Scene {
                 direction: (direction, 0.0).into(),
                 color: (color, 1.0).into(),
             },
+        );
+
+        let scene = SceneUniform::new(
+            device,
+            SceneUniformData::new(),
+            SceneUniformData::shadow(vec3(10.0, 10.0, 10.0), direction),
         );
 
         // FIXME: tons of pathbufs and refs - any better way to do this?
@@ -77,7 +87,11 @@ impl Scene {
             texture,
         );
 
-        Self { mesh, lighting }
+        Self {
+            mesh,
+            scene,
+            lighting,
+        }
     }
 }
 

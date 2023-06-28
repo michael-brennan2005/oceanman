@@ -9,7 +9,7 @@ use winit::{
 use crate::{
     camera::Camera,
     loader::Scene,
-    resources::{mesh_pipeline, SceneUniform, SceneUniformData, Texture},
+    resources::{mesh_pipeline, shadow_pipeline, SceneUniform, SceneUniformData, Texture},
 };
 
 pub struct Renderer {
@@ -21,9 +21,10 @@ pub struct Renderer {
 
     camera: Camera,
     depth_buffer: Texture,
+    shadow_map: Texture,
 
-    scene_uniform: SceneUniform,
     mesh_pipeline: wgpu::RenderPipeline,
+    shadow_pipeline: wgpu::RenderPipeline,
 
     scene: Scene,
 }
@@ -84,11 +85,11 @@ impl Renderer {
 
         let camera = Camera::default();
         let depth_buffer = Texture::create_depth_texture(&device, &config);
-
-        let scene_uniform = SceneUniform::new(&device, SceneUniformData::new_from_camera(&camera));
-        let mesh_pipeline = mesh_pipeline(&device, &config);
+        let shadow_map = Texture::create_depth_texture(&device, &config);
 
         let scene = Scene::from_file(&device, &queue, "resources/scene.json".to_string());
+        let mesh_pipeline = mesh_pipeline(&device, &config);
+        let shadow_pipeline = shadow_pipeline(&device, &config);
 
         Self {
             surface,
@@ -98,8 +99,9 @@ impl Renderer {
             size,
             camera,
             depth_buffer,
-            scene_uniform,
+            shadow_map,
             scene,
+            shadow_pipeline,
             mesh_pipeline,
         }
     }
@@ -110,7 +112,8 @@ impl Renderer {
 
     pub fn update(&mut self) {
         self.camera.update();
-        self.scene_uniform
+        self.scene
+            .scene
             .update(&self.queue, SceneUniformData::new_from_camera(&self.camera));
     }
 
@@ -153,7 +156,7 @@ impl Renderer {
             });
 
             render_pass.set_pipeline(&self.mesh_pipeline);
-            render_pass.set_bind_group(0, &self.scene_uniform.uniform_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
             render_pass.set_bind_group(1, &self.scene.lighting.uniform_bind_group, &[]);
             render_pass.set_bind_group(2, &self.scene.mesh.bind_group, &[]);
 
