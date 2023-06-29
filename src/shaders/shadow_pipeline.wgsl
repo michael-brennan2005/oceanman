@@ -1,6 +1,6 @@
 struct SceneUniforms {
     perspective_view: mat4x4<f32>,
-    camera_pos: vec3<f32>
+    camera_pos: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -11,7 +11,7 @@ struct MeshUniforms {
     normal: mat4x4<f32>,
 }
 
-@group(2) @binding(0) var<uniform> mesh: MeshUniforms;
+@group(1) @binding(0) var<uniform> mesh: MeshUniforms;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -26,7 +26,7 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_space_position = lighting.projection_matrix * mesh.model * vec4<f32>(in.position, 1.0) - vec4<f32>(0.0, 0.0, 1.0, 0.0);
+    out.clip_space_position = shadow.perspective_view * mesh.model * vec4<f32>(in.position, 1.0);
 	return out;
 }
 

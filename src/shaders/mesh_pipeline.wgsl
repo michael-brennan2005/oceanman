@@ -12,7 +12,9 @@ struct LightingUniforms {
 }
 
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
-
+@group(1) @binding(1) var shadow_map: texture_depth_2d;
+@group(1) @binding(2) var shadow_sampler: sampler_comparison;
+ 
 struct MeshUniforms {
     model: mat4x4<f32>,
     normal: mat4x4<f32>
@@ -32,7 +34,8 @@ struct VertexOutput {
     @builtin(position) clip_space_position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>
+    @location(2) uv: vec2<f32>,
+    @location(3) shadow_coord: vec3<f32>
 }
 
 @vertex
@@ -42,7 +45,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.world_position = (mesh.model * vec4<f32>(in.position, 1.0)).xyz;
     out.normal = (mesh.normal * vec4<f32>(in.normal, 0.0)).xyz;    
     out.uv = in.uv;
-	return out;
+    out.shadow_coord = (shadow.perspective_view * mesh.model * vec4<f32>(in.position, 1.0)).xyz;
+	out.shadow_coord.x = out.shadow_coord.x * 0.5 + 0.5;
+    out.shadow_coord.y = out.shadow_coord.y * -0.5 + 0.5;
+    return out;
 }
 
 // TODO: move these to an actual bind group
@@ -55,6 +61,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(texture)));
     var surface_color = textureLoad(texture, texelCoords, 0).rgb;
 
+    // percentage-closer filtering
+    var increment = 1.0 / 1024.0;
+    var visibility = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            var offset = vec2<f32>(vec2(x,y)) * increment;
+            visibility += textureSampleCompare(shadow_map, shadow_sampler, in.shadow_coord.xy + offset, in.shadow_coord.z - .007);
+        }
+    }
+    visibility /= 9.0;
+    
     var light_dir = -1.0 * lighting.direction.xyz;
     var view_dir = normalize(scene.camera_pos.xyz - in.world_position);
     var normal = normalize(in.normal);
@@ -68,7 +85,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         specular = vec3<f32>(0.0, 0.0, 0.0);
     }
 
-    var color = ambient + diffuse + specular;
+    var color = ambient + visibility * (diffuse + specular);
     
     return vec4<f32>(color.xyz, 1.0);
 }

@@ -3,7 +3,8 @@ use std::num::NonZeroU64;
 use glam::{vec3, vec4, Mat4, UVec3, Vec3, Vec4};
 use wgpu::{
     util::DeviceExt, BlendState, BufferBinding, Device, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, VertexBufferLayout, VertexState,
+    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, ShaderStages, VertexBufferLayout,
+    VertexState,
 };
 
 use crate::camera::Camera;
@@ -144,6 +145,7 @@ pub struct LightingUniformData {
 
 pub struct LightingUniform {
     pub uniform_buffer: wgpu::Buffer,
+    pub shadow_map: Texture,
     pub uniform_bind_group: wgpu::BindGroup,
 }
 
@@ -151,25 +153,44 @@ unsafe impl bytemuck::Pod for LightingUniformData {}
 unsafe impl bytemuck::Zeroable for LightingUniformData {}
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
+// Contains shadow map (since this is used only for scene pass and not shadow pass)
+// FIXME: seems like a bad idea to put shadowmap in here?
 impl LightingUniform {
-    pub fn new(device: &wgpu::Device, data: LightingUniformData) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        data: LightingUniformData,
+    ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lighting uniform buffer"),
             contents: bytemuck::cast_slice(&[data]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
 
+        let shadow_map = Texture::create_depth_texture(&device, &config);
+
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Scene uniform bind group"),
-            layout: &SceneUniform::bind_group_layout(device),
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            label: Some("Lighting uniform bind group"),
+            layout: &LightingUniform::bind_group_layout(device),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&shadow_map.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&shadow_map.sampler),
+                },
+            ],
         });
 
         LightingUniform {
             uniform_buffer,
+            shadow_map,
             uniform_bind_group,
         }
     }
@@ -181,16 +202,34 @@ impl LightingUniform {
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Lighting uniform bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::all(),
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
         })
     }
 }
@@ -392,9 +431,11 @@ impl Texture {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Nearest,
+            compare: Some(wgpu::CompareFunction::Less),
             lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
-            ..Default::default()
+            anisotropy_clamp: 1,
+            border_color: None,
         });
 
         Self {
