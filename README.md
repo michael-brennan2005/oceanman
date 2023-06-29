@@ -1,33 +1,33 @@
 # OceanMan
 
-OceanMan is a real-time renderer focused on making realistic renders. It is developed using [Zig](https://ziglang.org/), [WebGPU](https://www.w3.org/TR/webgpu/), and [Mach](https://machengine.org/). It is currently in version 0.1.
+OceanMan is a real-time renderer focused on making realism. It is developed using Rust, WebGPU, and wgpu. It is currently in version 0.2.
 
 ## Installation.
 
-OceanMan was most recently developed using zig 0.11.0-dev.3363+9461ed503.
+OceanMan was most recently developed using rustc 1.70.0 (90c541806 2023-05-31).
 
 ```bash
 git clone https://github.com/tech0tron/oceanman
-zig build
+cargo build
 ```
 
 ## Usage
 
-OceanMan requires a m3d file to render. OceanMan should be executed in a working directory where resources/ is located, so it can access shaders.
+OceanMan requires a json file to render. The json file describes how the scene should be setup, and an example one is located in the resources/ directory.
 ```bash
-oceanman model.m3d
+oceanman scene.json
 ```
 
 ## Features
 
 * Phong shading
 * Texturing
-* Hard-coded light and model positions
-* Loading in .m3d files
+* Shadow mapping
+* Configurable models and model positions/orientations.
+* One directional light (configurable)
+* Loading in .obj files
 
 ## Images
-![One](screenshots/one.png)
-![Two](screenshots/two.png)
 
 ## License
 
