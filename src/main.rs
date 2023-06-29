@@ -46,15 +46,9 @@ pub async fn run() {
                     ..
                 } => {
                     if *state == ElementState::Released {
-                        let result = window.set_cursor_grab(winit::window::CursorGrabMode::None);
-                        if result.is_err() {
-                            println!("error: {:?}", result);
-                        }
+                        let _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
                     } else if *state == ElementState::Pressed {
-                        let result = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
-                        if result.is_err() {
-                            println!("error: {:?}", result);
-                        }
+                        let _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
                     }
                 }
                 _ => {}

@@ -23,22 +23,28 @@ struct LightingConfig {
 struct MeshConfig {
     obj: String,
     texture: String,
+    position: [f32; 3],
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneConfig {
     pub lighting: LightingConfig,
-    pub mesh: MeshConfig,
+    pub meshes: Vec<MeshConfig>,
 }
 
 pub struct Scene {
-    pub mesh: Mesh,
+    pub meshes: Vec<Mesh>,
     pub scene: SceneUniform,
     pub lighting: LightingUniform,
 }
 
 impl Scene {
-    pub fn from_file(device: &wgpu::Device, queue: &wgpu::Queue, path: String) -> Self {
+    pub fn from_file(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        queue: &wgpu::Queue,
+        path: String,
+    ) -> Self {
         let bytes = fs::read(&path).unwrap();
         let deserialized: SceneConfig = serde_json::from_slice(&bytes).unwrap();
 
@@ -47,6 +53,7 @@ impl Scene {
 
         let lighting = LightingUniform::new(
             device,
+            config,
             LightingUniformData {
                 direction: (direction, 0.0).into(),
                 color: (color, 1.0).into(),
@@ -63,32 +70,33 @@ impl Scene {
         let mut root_path = PathBuf::from(&path);
         root_path.pop();
 
-        let obj_path: PathBuf = [&root_path, &PathBuf::from(&deserialized.mesh.obj)]
-            .iter()
-            .collect();
-        let (vertex_buffer, vertex_count) = vertex_buffer_from_file(&device, obj_path);
+        let mut meshes: Vec<Mesh> = Vec::new();
 
-        let texture_path: PathBuf = [&root_path, &PathBuf::from(deserialized.mesh.texture)]
-            .iter()
-            .collect();
+        for mesh in deserialized.meshes {
+            let obj_path: PathBuf = [&root_path, &PathBuf::from(&mesh.obj)].iter().collect();
+            let (vertex_buffer, vertex_count) = vertex_buffer_from_file(&device, obj_path);
 
-        let texture_bytes = fs::read(texture_path).unwrap();
-        let texture = Texture::create_from_bytes(
-            &device,
-            &queue,
-            texture_bytes.as_slice(),
-            Some("Mesh texture"),
-        );
-        let mesh = Mesh::new(
-            &device,
-            vertex_buffer,
-            vertex_count,
-            MeshUniformData::new(Mat4::from_scale(vec3(0.5, 0.5, 0.5))),
-            texture,
-        );
+            let texture_path: PathBuf =
+                [&root_path, &PathBuf::from(&mesh.texture)].iter().collect();
+
+            let texture_bytes = fs::read(texture_path).unwrap();
+            let texture = Texture::create_from_bytes(
+                &device,
+                &queue,
+                texture_bytes.as_slice(),
+                Some("Mesh texture"),
+            );
+            meshes.push(Mesh::new(
+                &device,
+                vertex_buffer,
+                vertex_count,
+                MeshUniformData::new(Mat4::from_translation(mesh.position.into())),
+                texture,
+            ));
+        }
 
         Self {
-            mesh,
+            meshes,
             scene,
             lighting,
         }
@@ -111,6 +119,7 @@ pub fn vertex_buffer_from_file<P: AsRef<Path> + fmt::Debug>(
         vertex_vec.push(mesh.positions[*i as usize * 3 + 2]);
 
         if mesh.normals.is_empty() {
+            println!("RUST");
             vertex_vec.push(0.0);
             vertex_vec.push(0.0);
             vertex_vec.push(0.0);

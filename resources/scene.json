@@ -3,8 +3,14 @@
         "direction": [0,0,1],
         "color": [1, 0, 0]
     },
-    "mesh": {
+    "meshes": [{
         "obj": "Grass_Block.obj",
-        "texture": "Grass_Block_TEX.png"
-    }
+        "texture": "Grass_Block_TEX.png",
+        "position": [0,-1,4]
+    },
+{
+        "obj": "Grass_Block.obj",
+        "texture": "Grass_Block_TEX.png",
+        "position": [-1,0,0]
+    }    ]
 }

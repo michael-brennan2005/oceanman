@@ -21,7 +21,6 @@ pub struct Renderer {
 
     camera: Camera,
     depth_buffer: Texture,
-    shadow_map: Texture,
 
     mesh_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
@@ -87,7 +86,7 @@ impl Renderer {
         let depth_buffer = Texture::create_depth_texture(&device, &config);
         let shadow_map = Texture::create_depth_texture(&device, &config);
 
-        let scene = Scene::from_file(&device, &queue, "resources/scene.json".to_string());
+        let scene = Scene::from_file(&device, &config, &queue, "resources/scene.json".to_string());
         let mesh_pipeline = mesh_pipeline(&device, &config);
         let shadow_pipeline = shadow_pipeline(&device, &config);
 
@@ -99,7 +98,6 @@ impl Renderer {
             size,
             camera,
             depth_buffer,
-            shadow_map,
             scene,
             shadow_pipeline,
             mesh_pipeline,
@@ -130,8 +128,33 @@ impl Renderer {
             });
 
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
+            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Shadow pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.scene.lighting.shadow_map.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                }),
+            });
+
+            shadow_pass.set_pipeline(&self.shadow_pipeline);
+            shadow_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
+
+            for mesh in &self.scene.meshes {
+                shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
+
+                shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                shadow_pass.draw(0..mesh.vertex_count, 0..1);
+            }
+        }
+
+        {
+            let mut scene_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Scene pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
@@ -155,13 +178,16 @@ impl Renderer {
                 }),
             });
 
-            render_pass.set_pipeline(&self.mesh_pipeline);
-            render_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.scene.lighting.uniform_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.scene.mesh.bind_group, &[]);
+            scene_pass.set_pipeline(&self.mesh_pipeline);
+            scene_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
+            scene_pass.set_bind_group(1, &self.scene.lighting.uniform_bind_group, &[]);
 
-            render_pass.set_vertex_buffer(0, self.scene.mesh.vertex_buffer.slice(..));
-            render_pass.draw(0..self.scene.mesh.vertex_count, 0..1);
+            for mesh in &self.scene.meshes {
+                scene_pass.set_bind_group(2, &mesh.bind_group, &[]);
+
+                scene_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                scene_pass.draw(0..mesh.vertex_count, 0..1);
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
