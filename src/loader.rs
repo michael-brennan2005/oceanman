@@ -3,7 +3,7 @@ use std::{
     path::{self, Path, PathBuf},
 };
 
-use glam::{vec3, vec4, Mat4, U64Vec4, Vec3};
+use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec3};
 use serde::{Deserialize, Serialize};
 use tobj;
 use wgpu::util::DeviceExt;
@@ -22,8 +22,10 @@ struct LightingConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct MeshConfig {
     obj: String,
-    texture: String,
-    position: [f32; 3],
+    texture: Option<String>,
+    position: Option<[f32; 3]>,
+    rotation: Option<[f32; 3]>,
+    scale: Option<[f32; 3]>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,21 +78,43 @@ impl Scene {
             let obj_path: PathBuf = [&root_path, &PathBuf::from(&mesh.obj)].iter().collect();
             let (vertex_buffer, vertex_count) = vertex_buffer_from_file(&device, obj_path);
 
-            let texture_path: PathBuf =
-                [&root_path, &PathBuf::from(&mesh.texture)].iter().collect();
+            let texture = if let Some(texture_path_string) = mesh.texture {
+                let texture_path: PathBuf = [&root_path, &PathBuf::from(&texture_path_string)]
+                    .iter()
+                    .collect();
 
-            let texture_bytes = fs::read(texture_path).unwrap();
-            let texture = Texture::create_from_bytes(
-                &device,
-                &queue,
-                texture_bytes.as_slice(),
-                Some("Mesh texture"),
-            );
+                let texture_bytes = fs::read(texture_path).unwrap();
+                Texture::create_from_bytes(
+                    &device,
+                    &queue,
+                    texture_bytes.as_slice(),
+                    Some(&texture_path_string.as_str()),
+                )
+            } else {
+                Texture::create_1x1_texture(
+                    &device,
+                    &queue,
+                    [255, 255, 255, 255],
+                    Some("1x1 texture"),
+                )
+            };
+
+            let scale = mesh.scale.unwrap_or([1.0, 1.0, 1.0]);
+            let position = mesh.position.unwrap_or([0.0, 0.0, 0.0]);
+            let rotation = {
+                let xyz = mesh.rotation.unwrap_or([0.0, 0.0, 0.0]);
+                Quat::from_euler(EulerRot::XYZ, xyz[0], xyz[1], xyz[2])
+            };
+
             meshes.push(Mesh::new(
                 &device,
                 vertex_buffer,
                 vertex_count,
-                MeshUniformData::new(Mat4::from_translation(mesh.position.into())),
+                MeshUniformData::new(Mat4::from_scale_rotation_translation(
+                    scale.into(),
+                    rotation,
+                    position.into(),
+                )),
                 texture,
             ));
         }
