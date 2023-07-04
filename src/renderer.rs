@@ -84,7 +84,6 @@ impl Renderer {
 
         let camera = Camera::default();
         let depth_buffer = Texture::create_depth_texture(&device, &config);
-        let shadow_map = Texture::create_depth_texture(&device, &config);
 
         let scene = Scene::from_file(&device, &config, &queue, "resources/scene.json".to_string());
         let mesh_pipeline = mesh_pipeline(&device, &config);
@@ -144,12 +143,10 @@ impl Renderer {
             shadow_pass.set_pipeline(&self.shadow_pipeline);
             shadow_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
 
-            for mesh in &self.scene.meshes {
-                shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
+            shadow_pass.set_bind_group(1, &self.scene.mesh.bind_group, &[]);
 
-                shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                shadow_pass.draw(0..mesh.vertex_count, 0..1);
-            }
+            shadow_pass.set_vertex_buffer(0, self.scene.mesh.vertex_buffer.slice(..));
+            shadow_pass.draw(0..self.scene.mesh.vertex_count, 0..1);
         }
 
         {
@@ -181,13 +178,11 @@ impl Renderer {
             scene_pass.set_pipeline(&self.mesh_pipeline);
             scene_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
             scene_pass.set_bind_group(1, &self.scene.lighting.uniform_bind_group, &[]);
+            scene_pass.set_bind_group(2, &self.scene.material.bind_group, &[]);
+            scene_pass.set_bind_group(3, &self.scene.mesh.bind_group, &[]);
 
-            for mesh in &self.scene.meshes {
-                scene_pass.set_bind_group(2, &mesh.bind_group, &[]);
-
-                scene_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                scene_pass.draw(0..mesh.vertex_count, 0..1);
-            }
+            scene_pass.set_vertex_buffer(0, self.scene.mesh.vertex_buffer.slice(..));
+            scene_pass.draw(0..self.scene.mesh.vertex_count, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

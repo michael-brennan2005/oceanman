@@ -234,6 +234,101 @@ impl LightingUniform {
     }
 }
 
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Debug)]
+pub struct MaterialUniformData {
+    pub ambient: Vec4,
+    pub diffuse: Vec4,
+    pub specular: Vec4,
+}
+
+unsafe impl bytemuck::Pod for MaterialUniformData {}
+unsafe impl bytemuck::Zeroable for MaterialUniformData {}
+
+impl Default for MaterialUniformData {
+    fn default() -> Self {
+        MaterialUniformData {
+            ambient: Vec4::ONE,
+            diffuse: Vec4::ONE,
+            specular: Vec4::ONE,
+        }
+    }
+}
+
+impl MaterialUniformData {
+    pub fn new(ambient: Vec3, diffuse: Vec3, specular: Vec3) -> Self {
+        MaterialUniformData {
+            ambient: (ambient, 1.0).into(),
+            diffuse: (diffuse, 1.0).into(),
+            specular: (specular, 1.0).into(),
+        }
+    }
+}
+pub struct Material {
+    pub uniform_buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub diffuse_texture: Texture,
+}
+
+impl Material {
+    pub fn new(device: &wgpu::Device, data: MaterialUniformData, diffuse_texture: Texture) -> Self {
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Material uniform buffer"),
+            contents: bytemuck::cast_slice(&[data]),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Material bind group"),
+            layout: &Material::bind_group_layout(device),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+            ],
+        });
+
+        Self {
+            uniform_buffer,
+            bind_group,
+            diffuse_texture,
+        }
+    }
+
+    pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Material bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::all(),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        })
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct MeshUniformData {
@@ -593,6 +688,7 @@ pub fn mesh_pipeline(
             bind_group_layouts: &[
                 &SceneUniform::bind_group_layout(device),
                 &LightingUniform::bind_group_layout(device),
+                &Material::bind_group_layout(device),
                 &Mesh::bind_group_layout(device),
             ],
             push_constant_ranges: &[],

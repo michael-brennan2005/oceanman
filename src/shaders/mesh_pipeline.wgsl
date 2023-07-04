@@ -14,14 +14,23 @@ struct LightingUniforms {
 @group(1) @binding(0) var<uniform> lighting: LightingUniforms;
 @group(1) @binding(1) var shadow_map: texture_depth_2d;
 @group(1) @binding(2) var shadow_sampler: sampler_comparison;
- 
+
+struct MaterialUniforms {
+    ambient: vec4<f32>,
+    diffuse: vec4<f32>,
+    specular: vec4<f32>,
+} 
+
+@group(2) @binding(0) var<uniform> material: MaterialUniforms;
+@group(2) @binding(1) var diffuse_texture: texture_2d<f32>;
+
 struct MeshUniforms {
     model: mat4x4<f32>,
     normal: mat4x4<f32>
 }
 
-@group(2) @binding(0) var<uniform> mesh: MeshUniforms;
-@group(2) @binding(1) var texture: texture_2d<f32>;
+@group(3) @binding(0) var<uniform> mesh: MeshUniforms;
+@group(3) @binding(1) var texture: texture_2d<f32>;
 
 struct VertexInput {
     @builtin(vertex_index) index: u32,
@@ -51,15 +60,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     return out;
 }
 
-// TODO: move these to an actual bind group
-const k_diff = 1.0;
-const k_spec = 1.0;
-const k_amb = 0.05;
- 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(texture)));
-    var surface_color = textureLoad(texture, texelCoords, 0).rgb;
+    var texelCoords = vec2<i32>(in.uv * vec2<f32>(textureDimensions(diffuse_texture)));
+    var surface_color = textureLoad(diffuse_texture, texelCoords, 0).rgb;
 
     // percentage-closer filtering
     var increment = 1.0 / 1024.0;
@@ -77,9 +81,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var normal = normalize(in.normal);
     var reflected = 2.0 * dot(light_dir, normal) * normal - light_dir;
 
-    var ambient = k_amb * surface_color;
-    var diffuse = k_diff * clamp(dot(light_dir, normal), 0.0, 1.0) * surface_color * lighting.color.xyz;
-    var specular = k_spec * pow(clamp(dot(reflected, view_dir), 0.0, 1.0), 16.0) * lighting.color.xyz;
+    var ambient = material.ambient.xyz * surface_color;
+    var diffuse = material.diffuse.xyz * clamp(dot(light_dir, normal), 0.0, 1.0) * surface_color * lighting.color.xyz;
+    var specular = material.specular.xyz * pow(clamp(dot(reflected, view_dir), 0.0, 1.0), 16.0) * lighting.color.xyz;
 
     if (clamp(dot(light_dir, normal), 0.0, 1.0) <= 0.0) {
         specular = vec3<f32>(0.0, 0.0, 0.0);
