@@ -351,6 +351,7 @@ pub struct Mesh {
     pub vertex_count: u32,
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
+    pub material_index: usize,
 }
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
@@ -360,6 +361,7 @@ impl Mesh {
         vertex_buffer: wgpu::Buffer,
         vertex_count: u32,
         data: MeshUniformData,
+        material_index: usize,
     ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Mesh uniform buffer"),
@@ -381,6 +383,7 @@ impl Mesh {
             vertex_count,
             uniform_buffer,
             bind_group,
+            material_index,
         }
     }
 

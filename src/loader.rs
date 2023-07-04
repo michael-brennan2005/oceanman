@@ -35,8 +35,8 @@ struct SceneConfig {
 }
 
 pub struct Scene {
-    pub mesh: Mesh,
-    pub material: Material,
+    pub meshes: Vec<Mesh>,
+    pub materials: Vec<Material>,
     pub scene: SceneUniform,
     pub lighting: LightingUniform,
 }
@@ -103,10 +103,10 @@ impl Scene {
         let translation =
             Mat4::from_scale_rotation_translation(scale.into(), rotation, position.into());
 
-        let (mesh, material) = load_obj(device, queue, obj_path, translation, &root_path);
+        let (meshes, materials) = load_obj(device, queue, obj_path, translation, &root_path);
         Self {
-            mesh,
-            material,
+            meshes,
+            materials,
             scene,
             lighting,
         }
@@ -119,60 +119,64 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
     path: P,
     translation: Mat4,
     root_path: &PathBuf,
-) -> (Mesh, Material) {
+) -> (Vec<Mesh>, Vec<Material>) {
     let (models, materials) = tobj::load_obj(path, &tobj::GPU_LOAD_OPTIONS).unwrap();
 
-    let obj_mesh = &models[0].mesh;
+    let mut meshes_vec: Vec<Mesh> = Vec::new();
+    let mut materials_vec: Vec<Material> = Vec::new();
 
-    let mut vertex_vec: Vec<f32> = Vec::new();
+    for model in &models {
+        let mesh = &model.mesh;
+        let mut vertex_vec: Vec<f32> = Vec::new();
 
-    for i in &obj_mesh.indices {
-        vertex_vec.push(obj_mesh.positions[*i as usize * 3]);
-        vertex_vec.push(obj_mesh.positions[*i as usize * 3 + 1]);
-        vertex_vec.push(obj_mesh.positions[*i as usize * 3 + 2]);
+        for i in &mesh.indices {
+            vertex_vec.push(mesh.positions[*i as usize * 3]);
+            vertex_vec.push(mesh.positions[*i as usize * 3 + 1]);
+            vertex_vec.push(mesh.positions[*i as usize * 3 + 2]);
 
-        if obj_mesh.normals.is_empty() {
-            println!("RUST");
-            vertex_vec.push(0.0);
-            vertex_vec.push(0.0);
-            vertex_vec.push(0.0);
-        } else {
-            vertex_vec.push(obj_mesh.normals[*i as usize * 3]);
-            vertex_vec.push(obj_mesh.normals[*i as usize * 3 + 1]);
-            vertex_vec.push(obj_mesh.normals[*i as usize * 3 + 2]);
+            if mesh.normals.is_empty() {
+                println!("RUST");
+                vertex_vec.push(0.0);
+                vertex_vec.push(0.0);
+                vertex_vec.push(0.0);
+            } else {
+                vertex_vec.push(mesh.normals[*i as usize * 3]);
+                vertex_vec.push(mesh.normals[*i as usize * 3 + 1]);
+                vertex_vec.push(mesh.normals[*i as usize * 3 + 2]);
+            }
+
+            if mesh.texcoords.is_empty() {
+                vertex_vec.push(0.0);
+                vertex_vec.push(0.0);
+            } else {
+                vertex_vec.push(mesh.texcoords[*i as usize * 2]);
+                vertex_vec.push(1.0 - mesh.texcoords[*i as usize * 2 + 1]);
+            }
         }
 
-        if obj_mesh.texcoords.is_empty() {
-            vertex_vec.push(0.0);
-            vertex_vec.push(0.0);
-        } else {
-            vertex_vec.push(obj_mesh.texcoords[*i as usize * 2]);
-            vertex_vec.push(1.0 - obj_mesh.texcoords[*i as usize * 2 + 1]);
-        }
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex buffer"),
+            contents: bytemuck::cast_slice(vertex_vec.as_slice()),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
+        });
+
+        meshes_vec.push(Mesh::new(
+            device,
+            vertex_buffer,
+            vertex_vec.len() as u32 / 8,
+            MeshUniformData::new(translation),
+            mesh.material_id.unwrap_or(0),
+        ));
     }
 
-    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex buffer"),
-        contents: bytemuck::cast_slice(vertex_vec.as_slice()),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
-    });
-
-    let mesh = Mesh::new(
-        device,
-        vertex_buffer,
-        vertex_vec.len() as u32 / 8,
-        MeshUniformData::new(translation),
-    );
-    let material = if let Some(material_idx) = &models[0].mesh.material_id {
-        let obj_material = &materials.unwrap()[*material_idx];
-
+    for material in &materials.unwrap() {
         let material_uniform_data = MaterialUniformData::new(
-            obj_material.ambient.unwrap_or([0.2, 0.2, 0.2]).into(),
-            obj_material.diffuse.unwrap_or([1.0, 1.0, 1.0]).into(),
-            obj_material.specular.unwrap_or([1.0, 1.0, 1.0]).into(),
+            material.ambient.unwrap_or([0.2, 0.2, 0.2]).into(),
+            material.diffuse.unwrap_or([1.0, 1.0, 1.0]).into(),
+            material.specular.unwrap_or([0.5, 0.5, 0.5]).into(),
         );
 
-        let diffuse_texture = if let Some(diffuse_texture_path) = &obj_material.diffuse_texture {
+        let diffuse_texture = if let Some(diffuse_texture_path) = &material.diffuse_texture {
             let texture_path: PathBuf = [&root_path, &PathBuf::from(&diffuse_texture_path)]
                 .iter()
                 .collect();
@@ -188,14 +192,12 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
             Texture::create_1x1_texture(device, queue, [255, 255, 255, 255], Some("1x1 texture"))
         };
 
-        Material::new(device, material_uniform_data, diffuse_texture)
-    } else {
-        Material::new(
+        materials_vec.push(Material::new(
             device,
-            MaterialUniformData::default(),
-            Texture::create_1x1_texture(device, queue, [255, 255, 255, 255], Some("1x1 texture")),
-        )
-    };
+            material_uniform_data,
+            diffuse_texture,
+        ));
+    }
 
-    (mesh, material)
+    (meshes_vec, materials_vec)
 }
