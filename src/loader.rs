@@ -51,7 +51,7 @@ impl Scene {
         let bytes = fs::read(&path).unwrap();
         let deserialized: SceneConfig = serde_json::from_slice(&bytes).unwrap();
 
-        let direction = Vec3::from_slice(&deserialized.lighting.direction);
+        let direction = Vec3::from_slice(&deserialized.lighting.direction).normalize();
         let color = Vec3::from_slice(&deserialized.lighting.color);
 
         let lighting = LightingUniform::new(
@@ -66,7 +66,7 @@ impl Scene {
         let scene = SceneUniform::new(
             device,
             SceneUniformData::new(),
-            SceneUniformData::shadow(vec3(10.0, 10.0, 10.0), direction),
+            SceneUniformData::shadow(vec3(100.0, 100.0, 100.0), direction),
         );
 
         // FIXME: tons of pathbufs and refs - any better way to do this?

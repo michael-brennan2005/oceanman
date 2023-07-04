@@ -146,6 +146,7 @@ pub struct LightingUniformData {
 pub struct LightingUniform {
     pub uniform_buffer: wgpu::Buffer,
     pub shadow_map: Texture,
+    pub shadow_map_sampler: Sampler,
     pub uniform_bind_group: wgpu::BindGroup,
 }
 
@@ -168,6 +169,7 @@ impl LightingUniform {
         });
 
         let shadow_map = Texture::create_depth_texture(&device, &config);
+        let shadow_map_sampler = Sampler::shadow_map_sampler(&device);
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Lighting uniform bind group"),
@@ -183,7 +185,7 @@ impl LightingUniform {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&shadow_map.sampler),
+                    resource: wgpu::BindingResource::Sampler(&shadow_map_sampler.sampler),
                 },
             ],
         });
@@ -191,6 +193,7 @@ impl LightingUniform {
         LightingUniform {
             uniform_buffer,
             shadow_map,
+            shadow_map_sampler,
             uniform_bind_group,
         }
     }
@@ -268,6 +271,7 @@ pub struct Material {
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub diffuse_texture: Texture,
+    pub diffuse_texture_sampler: Sampler,
 }
 
 impl Material {
@@ -277,6 +281,8 @@ impl Material {
             contents: bytemuck::cast_slice(&[data]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
+
+        let diffuse_texture_sampler = Sampler::diffuse_texture_sampler(&device);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Material bind group"),
@@ -290,6 +296,10 @@ impl Material {
                     binding: 1,
                     resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture_sampler.sampler),
+                },
             ],
         });
 
@@ -297,6 +307,7 @@ impl Material {
             uniform_buffer,
             bind_group,
             diffuse_texture,
+            diffuse_texture_sampler,
         }
     }
 
@@ -322,6 +333,12 @@ impl Material {
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -411,7 +428,6 @@ impl Mesh {
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub sampler: wgpu::Sampler,
 }
 
 impl Texture {
@@ -446,11 +462,6 @@ impl Texture {
             ..Default::default()
         });
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label,
-            ..Default::default()
-        });
-
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture,
@@ -471,11 +482,7 @@ impl Texture {
             },
         );
 
-        Self {
-            texture,
-            view,
-            sampler,
-        }
+        Self { texture, view }
     }
 
     pub fn create_1x1_texture(
@@ -504,11 +511,6 @@ impl Texture {
             ..Default::default()
         });
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label,
-            ..Default::default()
-        });
-
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture,
@@ -529,11 +531,7 @@ impl Texture {
             },
         );
 
-        Self {
-            texture,
-            view,
-            sampler,
-        }
+        Self { texture, view }
     }
 
     pub fn create_depth_texture(
@@ -557,8 +555,37 @@ impl Texture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        Self { texture, view }
+    }
+}
+
+pub struct Sampler {
+    sampler: wgpu::Sampler,
+}
+
+impl Sampler {
+    pub fn diffuse_texture_sampler(device: &wgpu::Device) -> Self {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Depth texture sampler (unused)"),
+            label: Some("Diffuse texture sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        Self { sampler }
+    }
+
+    pub fn shadow_map_sampler(device: &wgpu::Device) -> Self {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Shadow map sampler (PCF)"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -572,11 +599,7 @@ impl Texture {
             border_color: None,
         });
 
-        Self {
-            texture,
-            view,
-            sampler,
-        }
+        Self { sampler }
     }
 }
 
