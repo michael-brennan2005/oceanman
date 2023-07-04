@@ -333,8 +333,8 @@ impl Material {
 #[derive(Clone, Copy, Debug)]
 pub struct MeshUniformData {
     pub world: Mat4,
-    pub normal: Mat4,
 }
+
 unsafe impl bytemuck::Pod for MeshUniformData {}
 unsafe impl bytemuck::Zeroable for MeshUniformData {}
 
@@ -342,7 +342,6 @@ impl MeshUniformData {
     pub fn new(world: Mat4) -> Self {
         MeshUniformData {
             world: world.into(),
-            normal: world.transpose().inverse(),
         }
     }
 }
@@ -352,7 +351,6 @@ pub struct Mesh {
     pub vertex_count: u32,
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
-    pub texture: Texture,
 }
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
@@ -362,7 +360,6 @@ impl Mesh {
         vertex_buffer: wgpu::Buffer,
         vertex_count: u32,
         data: MeshUniformData,
-        texture: Texture,
     ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Mesh uniform buffer"),
@@ -373,16 +370,10 @@ impl Mesh {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Mesh uniform bind group"),
             layout: &Mesh::bind_group_layout(device),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&texture.view),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         Self {
@@ -390,7 +381,6 @@ impl Mesh {
             vertex_count,
             uniform_buffer,
             bind_group,
-            texture,
         }
     }
 
@@ -401,28 +391,16 @@ impl Mesh {
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Mesh uniform bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::all(),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         })
     }
 }

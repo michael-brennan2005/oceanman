@@ -26,11 +26,9 @@ struct MaterialUniforms {
 
 struct MeshUniforms {
     model: mat4x4<f32>,
-    normal: mat4x4<f32>
 }
 
 @group(3) @binding(0) var<uniform> mesh: MeshUniforms;
-@group(3) @binding(1) var texture: texture_2d<f32>;
 
 struct VertexInput {
     @builtin(vertex_index) index: u32,
@@ -52,7 +50,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.clip_space_position = scene.perspective_view * mesh.model * vec4<f32>(in.position, 1.0);
     out.world_position = (mesh.model * vec4<f32>(in.position, 1.0)).xyz;
-    out.normal = (mesh.normal * vec4<f32>(in.normal, 0.0)).xyz;    
+    out.normal = (mesh.model * vec4<f32>(in.normal, 0.0)).xyz;    
     out.uv = in.uv;
     out.shadow_coord = (shadow.perspective_view * mesh.model * vec4<f32>(in.position, 1.0)).xyz;
 	out.shadow_coord.x = out.shadow_coord.x * 0.5 + 0.5;
