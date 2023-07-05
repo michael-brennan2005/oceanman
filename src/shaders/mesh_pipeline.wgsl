@@ -24,6 +24,8 @@ struct MaterialUniforms {
 @group(2) @binding(0) var<uniform> material: MaterialUniforms;
 @group(2) @binding(1) var diffuse_texture: texture_2d<f32>;
 @group(2) @binding(2) var diffuse_texture_sampler: sampler;
+@group(2) @binding(3) var normal_texture: texture_2d<f32>;
+@group(2) @binding(4) var normal_texture_sampler: sampler;
 
 struct MeshUniforms {
     model: mat4x4<f32>,
@@ -62,7 +64,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var surface_color = textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb;
-
+    var normal_color = textureSample(normal_texture, normal_texture_sampler, in.uv).rgb;
     // percentage-closer filtering
     var increment = 1.0 / 1024.0;
     var visibility = 0.0;
@@ -89,5 +91,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
     var color = ambient + visibility * (diffuse + specular);
     
-    return vec4<f32>(color, 1.0);
+    return vec4<f32>(pow(normal_color, vec3<f32>(2.2)), 1.0);
 }

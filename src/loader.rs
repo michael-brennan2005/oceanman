@@ -77,22 +77,6 @@ impl Scene {
             .iter()
             .collect();
 
-        let texture = if let Some(texture_path_string) = deserialized.mesh.texture {
-            let texture_path: PathBuf = [&root_path, &PathBuf::from(&texture_path_string)]
-                .iter()
-                .collect();
-
-            let texture_bytes = fs::read(texture_path).unwrap();
-            Texture::create_from_bytes(
-                &device,
-                &queue,
-                texture_bytes.as_slice(),
-                Some(&texture_path_string.as_str()),
-            )
-        } else {
-            Texture::create_1x1_texture(&device, &queue, [255, 255, 255, 255], Some("1x1 texture"))
-        };
-
         let scale = deserialized.mesh.scale.unwrap_or([1.0, 1.0, 1.0]);
         let position = deserialized.mesh.position.unwrap_or([0.0, 0.0, 0.0]);
         let rotation = {
@@ -103,7 +87,7 @@ impl Scene {
         let translation =
             Mat4::from_scale_rotation_translation(scale.into(), rotation, position.into());
 
-        let (meshes, materials) = load_obj(device, queue, obj_path, translation, &root_path);
+        let (meshes, materials) = load_obj(device, queue, obj_path, translation);
         Self {
             meshes,
             materials,
@@ -118,9 +102,8 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
     queue: &wgpu::Queue,
     path: P,
     translation: Mat4,
-    root_path: &PathBuf,
 ) -> (Vec<Mesh>, Vec<Material>) {
-    let (models, materials) = tobj::load_obj(path, &tobj::GPU_LOAD_OPTIONS).unwrap();
+    let (models, materials) = tobj::load_obj(&path, &tobj::GPU_LOAD_OPTIONS).unwrap();
 
     let mut meshes_vec: Vec<Mesh> = Vec::new();
     let mut materials_vec: Vec<Material> = Vec::new();
@@ -177,25 +160,66 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
         );
 
         let diffuse_texture = if let Some(diffuse_texture_path) = &material.diffuse_texture {
-            let texture_path: PathBuf = [&root_path, &PathBuf::from(&diffuse_texture_path)]
-                .iter()
-                .collect();
+            let root_path = &path.as_ref().parent().unwrap_or(Path::new("/"));
+            let texture_path: PathBuf = [
+                &root_path.to_path_buf(),
+                &PathBuf::from(&diffuse_texture_path),
+            ]
+            .iter()
+            .collect();
 
             let texture_bytes = fs::read(texture_path).unwrap();
+
             Texture::create_from_bytes(
                 &device,
                 &queue,
                 texture_bytes.as_slice(),
                 Some(&diffuse_texture_path.as_str()),
+                None,
             )
         } else {
-            Texture::create_1x1_texture(device, queue, [255, 255, 255, 255], Some("1x1 texture"))
+            Texture::create_1x1_texture(
+                device,
+                queue,
+                [255, 255, 255, 255],
+                Some("1x1 texture"),
+                None,
+            )
+        };
+
+        let normal_texture = if let Some(normal_texture_path) = &material.normal_texture {
+            let root_path = &path.as_ref().parent().unwrap_or(Path::new("/"));
+            let texture_path: PathBuf = [
+                &root_path.to_path_buf(),
+                &PathBuf::from(&normal_texture_path),
+            ]
+            .iter()
+            .collect();
+
+            let texture_bytes = fs::read(texture_path).unwrap();
+
+            Texture::create_from_bytes(
+                &device,
+                &queue,
+                texture_bytes.as_slice(),
+                Some(&normal_texture_path.as_str()),
+                Some(wgpu::TextureFormat::Rgba8Unorm),
+            )
+        } else {
+            Texture::create_1x1_texture(
+                device,
+                queue,
+                [128, 128, 255, 255],
+                Some("1x1 texture"),
+                Some(wgpu::TextureFormat::Rgba8Unorm),
+            )
         };
 
         materials_vec.push(Material::new(
             device,
             material_uniform_data,
             diffuse_texture,
+            normal_texture,
         ));
     }
 

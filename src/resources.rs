@@ -272,10 +272,17 @@ pub struct Material {
     pub bind_group: wgpu::BindGroup,
     pub diffuse_texture: Texture,
     pub diffuse_texture_sampler: Sampler,
+    pub normal_texture: Texture,
+    pub normal_texture_sampler: Sampler,
 }
 
 impl Material {
-    pub fn new(device: &wgpu::Device, data: MaterialUniformData, diffuse_texture: Texture) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        data: MaterialUniformData,
+        diffuse_texture: Texture,
+        normal_texture: Texture,
+    ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Material uniform buffer"),
             contents: bytemuck::cast_slice(&[data]),
@@ -283,6 +290,7 @@ impl Material {
         });
 
         let diffuse_texture_sampler = Sampler::diffuse_texture_sampler(&device);
+        let normal_texture_sampler = Sampler::normal_texture_sampler(&device);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Material bind group"),
@@ -300,6 +308,14 @@ impl Material {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&diffuse_texture_sampler.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&normal_texture_sampler.sampler),
+                },
             ],
         });
 
@@ -308,6 +324,8 @@ impl Material {
             bind_group,
             diffuse_texture,
             diffuse_texture_sampler,
+            normal_texture,
+            normal_texture_sampler,
         }
     }
 
@@ -337,6 +355,22 @@ impl Material {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
@@ -438,6 +472,7 @@ impl Texture {
         queue: &wgpu::Queue,
         bytes: &[u8],
         label: Option<&str>,
+        format: Option<wgpu::TextureFormat>,
     ) -> Self {
         let image = image::load_from_memory(bytes).unwrap().to_rgba8();
         let dimensions = image.dimensions();
@@ -452,7 +487,7 @@ impl Texture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -490,6 +525,7 @@ impl Texture {
         queue: &wgpu::Queue,
         rgba: [u8; 4],
         label: Option<&str>,
+        format: Option<wgpu::TextureFormat>,
     ) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
@@ -501,7 +537,7 @@ impl Texture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -581,6 +617,11 @@ impl Sampler {
         });
 
         Self { sampler }
+    }
+
+    pub fn normal_texture_sampler(device: &wgpu::Device) -> Self {
+        // TODO: will diffuse and normal samplers always be same? check in after mipmaps
+        Sampler::diffuse_texture_sampler(device)
     }
 
     pub fn shadow_map_sampler(device: &wgpu::Device) -> Self {
