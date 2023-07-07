@@ -3,14 +3,14 @@ use std::{
     path::{self, Path, PathBuf},
 };
 
-use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec3};
+use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use tobj;
 use wgpu::util::DeviceExt;
 
 use crate::resources::{
     LightingUniform, LightingUniformData, Material, MaterialUniformData, Mesh, MeshUniformData,
-    SceneUniform, SceneUniformData, Texture,
+    SceneUniform, SceneUniformData, Texture, VertexAttributes,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -110,33 +110,65 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
 
     for model in &models {
         let mesh = &model.mesh;
-        let mut vertex_vec: Vec<f32> = Vec::new();
+        let mut vertex_vec: Vec<VertexAttributes> = Vec::new();
 
         for i in &mesh.indices {
-            vertex_vec.push(mesh.positions[*i as usize * 3]);
-            vertex_vec.push(mesh.positions[*i as usize * 3 + 1]);
-            vertex_vec.push(mesh.positions[*i as usize * 3 + 2]);
-
-            if mesh.normals.is_empty() {
-                println!("RUST");
-                vertex_vec.push(0.0);
-                vertex_vec.push(0.0);
-                vertex_vec.push(0.0);
-            } else {
-                vertex_vec.push(mesh.normals[*i as usize * 3]);
-                vertex_vec.push(mesh.normals[*i as usize * 3 + 1]);
-                vertex_vec.push(mesh.normals[*i as usize * 3 + 2]);
-            }
-
-            if mesh.texcoords.is_empty() {
-                vertex_vec.push(0.0);
-                vertex_vec.push(0.0);
-            } else {
-                vertex_vec.push(mesh.texcoords[*i as usize * 2]);
-                vertex_vec.push(1.0 - mesh.texcoords[*i as usize * 2 + 1]);
-            }
+            vertex_vec.push(VertexAttributes {
+                position: [
+                    mesh.positions[*i as usize * 3],
+                    mesh.positions[*i as usize * 3 + 1],
+                    mesh.positions[*i as usize * 3 + 2],
+                ],
+                normal: if mesh.normals.is_empty() {
+                    [0.0, 0.0, 0.0]
+                } else {
+                    [
+                        mesh.normals[*i as usize * 3],
+                        mesh.normals[*i as usize * 3 + 1],
+                        mesh.normals[*i as usize * 3 + 2],
+                    ]
+                },
+                uv: if mesh.texcoords.is_empty() {
+                    [0.0, 0.0]
+                } else {
+                    [
+                        mesh.texcoords[*i as usize * 2],
+                        1.0 - mesh.texcoords[*i as usize * 2 + 1],
+                    ]
+                },
+                tangent: [0.0, 0.0, 0.0],
+                bitangent: [0.0, 0.0, 0.0],
+            });
         }
 
+        for c in vertex_vec.chunks_mut(3) {
+            let pos0: Vec3 = c[0].position.into();
+            let pos1: Vec3 = c[1].position.into();
+            let pos2: Vec3 = c[2].position.into();
+
+            let uv0: Vec2 = c[0].uv.into();
+            let uv1: Vec2 = c[1].uv.into();
+            let uv2: Vec2 = c[2].uv.into();
+
+            let delta_pos1 = pos1 - pos0;
+            let delta_pos2 = pos2 - pos0;
+
+            let delta_uv1 = uv1 - uv0;
+            let delta_uv2 = uv2 - uv0;
+
+            let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+            let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+            // We flip the bitangent to enable right-handed normal
+            // maps with wgpu texture coordinate system
+            let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -r;
+
+            c[0].tangent = tangent.into();
+            c[1].tangent = tangent.into();
+            c[2].tangent = tangent.into();
+            c[0].bitangent = bitangent.into();
+            c[1].bitangent = bitangent.into();
+            c[2].bitangent = bitangent.into();
+        }
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex buffer"),
             contents: bytemuck::cast_slice(vertex_vec.as_slice()),
@@ -146,7 +178,7 @@ pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
         meshes_vec.push(Mesh::new(
             device,
             vertex_buffer,
-            vertex_vec.len() as u32 / 8,
+            vertex_vec.len() as u32,
             MeshUniformData::new(translation),
             mesh.material_id.unwrap_or(0),
         ));

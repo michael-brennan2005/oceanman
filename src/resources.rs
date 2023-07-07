@@ -3,8 +3,8 @@ use std::num::NonZeroU64;
 use glam::{vec3, vec4, Mat4, UVec3, Vec3, Vec4};
 use wgpu::{
     util::DeviceExt, BlendState, BufferBinding, Device, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, ShaderStages, VertexBufferLayout,
-    VertexState,
+    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, ShaderStages, VertexAttribute,
+    VertexBufferLayout, VertexState,
 };
 
 use crate::camera::Camera;
@@ -644,27 +644,28 @@ impl Sampler {
     }
 }
 
-fn vertex_buffer_layout() -> VertexBufferLayout<'static> {
-    VertexBufferLayout {
-        array_stride: 8 * 4,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &[
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x3,
-                offset: 0,
-                shader_location: 0,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x3,
-                offset: 3 * 4,
-                shader_location: 1,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x2,
-                offset: 6 * 4,
-                shader_location: 2,
-            },
-        ],
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct VertexAttributes {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
+    pub tangent: [f32; 3],
+    pub bitangent: [f32; 3],
+}
+
+unsafe impl bytemuck::Pod for VertexAttributes {}
+unsafe impl bytemuck::Zeroable for VertexAttributes {}
+
+impl VertexAttributes {
+    const BUFFER_LAYOUT: [VertexAttribute; 5] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3=> Float32x3, 4 => Float32x3];
+
+    fn buffer_layout() -> VertexBufferLayout<'static> {
+        VertexBufferLayout {
+            array_stride: std::mem::size_of::<VertexAttributes>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &VertexAttributes::BUFFER_LAYOUT,
+        }
     }
 }
 
@@ -687,7 +688,7 @@ pub fn shadow_pipeline(
         vertex: VertexState {
             module: &shader,
             entry_point: "vs_main",
-            buffers: &[vertex_buffer_layout()],
+            buffers: &[VertexAttributes::buffer_layout()],
         },
         fragment: Some(FragmentState {
             module: &shader,
@@ -741,7 +742,7 @@ pub fn mesh_pipeline(
         vertex: VertexState {
             module: &shader,
             entry_point: "vs_main",
-            buffers: &[vertex_buffer_layout()],
+            buffers: &[VertexAttributes::buffer_layout()],
         },
         fragment: Some(FragmentState {
             module: &shader,

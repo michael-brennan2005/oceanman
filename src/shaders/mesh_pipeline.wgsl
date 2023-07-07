@@ -37,7 +37,9 @@ struct VertexInput {
     @builtin(vertex_index) index: u32,
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>
+    @location(2) uv: vec2<f32>,
+    @location(3) tangent: vec3<f32>,
+    @location(4) bitangent: vec3<f32>
 }
 
 struct VertexOutput {
@@ -45,7 +47,9 @@ struct VertexOutput {
     @location(0) world_position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
-    @location(3) shadow_coord: vec3<f32>
+    @location(3) tangent: vec3<f32>,
+    @location(4) bitangent: vec3<f32>,
+    @location(5) shadow_coord: vec3<f32>
 }
 
 @vertex
@@ -58,13 +62,24 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shadow_coord = (shadow.perspective_view * mesh.model * vec4<f32>(in.position, 1.0)).xyz;
 	out.shadow_coord.x = out.shadow_coord.x * 0.5 + 0.5;
     out.shadow_coord.y = out.shadow_coord.y * -0.5 + 0.5;
+    out.tangent = (mesh.model * vec4<f32>(in.tangent, 0.0)).xyz;
+    out.bitangent = (mesh.model * vec4<f32>(in.bitangent, 0.0)).xyz;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var surface_color = textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb;
-    var normal_color = textureSample(normal_texture, normal_texture_sampler, in.uv).rgb;
+    var normal = 
+        textureSample(normal_texture, normal_texture_sampler, in.uv).rgb;
+    normal = normal - 0.5;
+    var rotation = mat3x3<f32>(
+        normalize(in.tangent),
+        normalize(in.bitangent),
+        normalize(in.normal)
+    );
+
+    normal = normalize(rotation * normal);
     // percentage-closer filtering
     var increment = 1.0 / 1024.0;
     var visibility = 0.0;
@@ -78,7 +93,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     
     var light_dir = -1.0 * lighting.direction.xyz;
     var view_dir = normalize(scene.camera_pos.xyz - in.world_position);
-    var normal = normalize(in.normal);
     var reflected = 2.0 * dot(light_dir, normal) * normal - light_dir;
 
     var ambient = material.ambient.xyz * surface_color;
@@ -90,6 +104,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     }
 
     var color = ambient + visibility * (diffuse + specular);
-    
-    return vec4<f32>(pow(normal_color, vec3<f32>(2.2)), 1.0);
+
+
+    return vec4<f32>(color, 1.0);
 }
