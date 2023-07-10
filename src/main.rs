@@ -5,9 +5,12 @@ use winit::{
 };
 
 mod camera;
+mod common;
 mod loader;
+mod pipelines;
 mod renderer;
 mod resources;
+mod texture;
 
 use renderer::Renderer;
 

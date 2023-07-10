@@ -3,14 +3,22 @@ use std::{
     path::{self, Path, PathBuf},
 };
 
-use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec2, Vec3};
+use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec2, Vec3, Vec4};
+use gltf::{image::Format, mesh::Mode};
 use serde::{Deserialize, Serialize};
 use tobj;
-use wgpu::util::DeviceExt;
+use wgpu::{
+    util::{BufferInitDescriptor, DeviceExt},
+    BufferUsages, ShaderModuleDescriptorSpirV,
+};
 
-use crate::resources::{
-    LightingUniform, LightingUniformData, Material, MaterialUniformData, Mesh, MeshUniformData,
-    SceneUniform, SceneUniformData, Texture, VertexAttributes,
+use crate::{
+    common::VertexAttributes,
+    resources::{
+        LightingUniform, LightingUniformData, Material, MaterialUniformData, Mesh, MeshUniformData,
+        SceneUniform, SceneUniformData,
+    },
+    texture::Texture,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,218 +50,200 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn from_file(
+    pub fn from_gltf(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         queue: &wgpu::Queue,
         path: String,
     ) -> Self {
-        let bytes = fs::read(&path).unwrap();
-        let deserialized: SceneConfig = serde_json::from_slice(&bytes).unwrap();
+        // TODO: proper error handling everywhere
+        // TODO: proper labeling everywhere
+        let (document, buffers, images) = gltf::import(path).unwrap();
 
-        let direction = Vec3::from_slice(&deserialized.lighting.direction).normalize();
-        let color = Vec3::from_slice(&deserialized.lighting.color);
+        let scene = document.default_scene().unwrap();
 
-        let lighting = LightingUniform::new(
-            device,
-            config,
-            LightingUniformData {
-                direction: (direction, 0.0).into(),
-                color: (color, 1.0).into(),
-            },
-        );
+        let mut meshes: Vec<Mesh> = Vec::new();
+        let mut materials: Vec<Material> = Vec::new();
 
-        let scene = SceneUniform::new(
-            device,
-            SceneUniformData::new(),
-            SceneUniformData::shadow(vec3(100.0, 100.0, 100.0), direction),
-        );
+        // TODO: get this to visit full node tree
+        for node in scene.nodes() {
+            let (translation, rotation, scale) = node.transform().decomposed();
 
-        // FIXME: tons of pathbufs and refs - any better way to do this?
-        let mut root_path = PathBuf::from(&path);
-        root_path.pop();
+            if let Some(mesh) = node.mesh() {
+                for primitive in mesh.primitives() {
+                    let reader = primitive.reader(|buffer| {
+                        if buffer.index() < buffers.len() {
+                            Some(buffers[buffer.index()].0.as_slice())
+                        } else {
+                            None
+                        }
+                    });
+                    let material = primitive.material().index().unwrap_or(0);
 
-        let obj_path: PathBuf = [&root_path, &PathBuf::from(&deserialized.mesh.obj)]
-            .iter()
-            .collect();
+                    let indices = reader.read_indices().unwrap().into_u32();
+                    let positions = reader
+                        .read_positions()
+                        .unwrap()
+                        .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
+                    let normals = reader
+                        .read_normals()
+                        .unwrap()
+                        .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
+                    let uvs = reader.read_tex_coords(0).unwrap().into_f32();
 
-        let scale = deserialized.mesh.scale.unwrap_or([1.0, 1.0, 1.0]);
-        let position = deserialized.mesh.position.unwrap_or([0.0, 0.0, 0.0]);
-        let rotation = {
-            let xyz = deserialized.mesh.rotation.unwrap_or([0.0, 0.0, 0.0]);
-            Quat::from_euler(EulerRot::XYZ, xyz[0], xyz[1], xyz[2])
-        };
+                    let tangents = reader.read_tangents();
 
-        let translation =
-            Mat4::from_scale_rotation_translation(scale.into(), rotation, position.into());
+                    let vertices = if tangents.is_some() {
+                        positions
+                            .zip(normals.zip(tangents.unwrap().zip(uvs)))
+                            .map(|(position, (normal, (tangent, uv)))| VertexAttributes {
+                                position,
+                                normal,
+                                uv,
+                                tangent: [tangent[0], tangent[1], tangent[2] * -1.0], // TODO: investigate handedness
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        positions
+                            .zip(normals.zip(uvs))
+                            .map(|(position, (normal, uv))| VertexAttributes {
+                                position,
+                                normal,
+                                uv,
+                                tangent: [0.0, 0.0, 0.0], // TODO: investigate handedness
+                            })
+                            .collect::<Vec<_>>()
+                    };
 
-        let (meshes, materials) = load_obj(device, queue, obj_path, translation);
+                    let indices = indices.collect::<Vec<_>>();
+
+                    // TODO: proper labels
+                    let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                        label: Some(
+                            format!("Vertex buffer for {}", mesh.name().unwrap_or("")).as_str(),
+                        ),
+                        contents: bytemuck::cast_slice(vertices.as_slice()),
+                        usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+                    });
+
+                    let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                        label: Some(
+                            format!("Index buffer for {}", mesh.name().unwrap_or("")).as_str(),
+                        ),
+                        contents: bytemuck::cast_slice(indices.as_slice()),
+                        usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
+                    });
+
+                    meshes.push(Mesh::new(
+                        device,
+                        vertex_buffer,
+                        index_buffer,
+                        vertices.len() as u32,
+                        indices.len() as u32,
+                        MeshUniformData::new(Mat4::from_scale_rotation_translation(
+                            scale.into(),
+                            Quat::from_array(rotation),
+                            translation.into(),
+                        )),
+                        material,
+                        Some(format!("{}", mesh.name().unwrap_or("Mesh")).as_str()),
+                    ));
+                }
+            }
+        }
+
+        for material in document.materials() {
+            let pbr = material.pbr_metallic_roughness();
+            let material_data = MaterialUniformData {
+                ambient: pbr.base_color_factor().into(),
+                diffuse: {
+                    let x = pbr.roughness_factor();
+                    Vec4::splat(x)
+                },
+                specular: {
+                    let x = pbr.metallic_factor();
+                    Vec4::splat(x)
+                },
+            };
+
+            let diffuse_texture = if let Some(texture_info) = pbr.base_color_texture() {
+                let image = &images[texture_info.texture().source().index()];
+
+                if image.format != Format::R8G8B8A8 {
+                    panic!("todo: error here")
+                }
+
+                Texture::create_from_bytes(
+                    device,
+                    queue,
+                    image.pixels.as_slice(),
+                    image.width,
+                    image.height,
+                    Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
+                    None,
+                )
+            } else {
+                Texture::create_1x1_texture(
+                    device,
+                    queue,
+                    [255, 255, 255, 255],
+                    Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
+                    None,
+                )
+            };
+
+            let normal_texture = if let Some(texture_info) = material.normal_texture() {
+                let image = &images[texture_info.texture().source().index()];
+
+                if image.format != Format::R8G8B8 {
+                    panic!("todo: error here")
+                }
+
+                Texture::create_from_bytes(
+                    device,
+                    queue,
+                    image.pixels.as_slice(),
+                    image.width,
+                    image.height,
+                    Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
+                    None,
+                )
+            } else {
+                Texture::create_1x1_texture(
+                    device,
+                    queue,
+                    [128, 128, 255, 255],
+                    Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
+                    None,
+                )
+            };
+
+            materials.push(Material::new(
+                device,
+                material_data,
+                diffuse_texture,
+                normal_texture,
+            ));
+        }
+
+        let lighting_direction = Vec3::new(1.0, 0.0, 0.0);
+        let lighting_color = Vec3::new(1.0, 1.0, 0.85);
         Self {
             meshes,
             materials,
-            scene,
-            lighting,
-        }
-    }
-}
-
-pub fn load_obj<P: AsRef<Path> + fmt::Debug>(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    path: P,
-    translation: Mat4,
-) -> (Vec<Mesh>, Vec<Material>) {
-    let (models, materials) = tobj::load_obj(&path, &tobj::GPU_LOAD_OPTIONS).unwrap();
-
-    let mut meshes_vec: Vec<Mesh> = Vec::new();
-    let mut materials_vec: Vec<Material> = Vec::new();
-
-    for model in &models {
-        let mesh = &model.mesh;
-        let mut vertex_vec: Vec<VertexAttributes> = Vec::new();
-
-        for i in &mesh.indices {
-            vertex_vec.push(VertexAttributes {
-                position: [
-                    mesh.positions[*i as usize * 3],
-                    mesh.positions[*i as usize * 3 + 1],
-                    mesh.positions[*i as usize * 3 + 2],
-                ],
-                normal: if mesh.normals.is_empty() {
-                    [0.0, 0.0, 0.0]
-                } else {
-                    [
-                        mesh.normals[*i as usize * 3],
-                        mesh.normals[*i as usize * 3 + 1],
-                        mesh.normals[*i as usize * 3 + 2],
-                    ]
-                },
-                uv: if mesh.texcoords.is_empty() {
-                    [0.0, 0.0]
-                } else {
-                    [
-                        mesh.texcoords[*i as usize * 2],
-                        1.0 - mesh.texcoords[*i as usize * 2 + 1],
-                    ]
-                },
-                tangent: [0.0, 0.0, 0.0],
-                bitangent: [0.0, 0.0, 0.0],
-            });
-        }
-
-        for c in vertex_vec.chunks_mut(3) {
-            let pos0: Vec3 = c[0].position.into();
-            let pos1: Vec3 = c[1].position.into();
-            let pos2: Vec3 = c[2].position.into();
-
-            let uv0: Vec2 = c[0].uv.into();
-            let uv1: Vec2 = c[1].uv.into();
-            let uv2: Vec2 = c[2].uv.into();
-
-            let delta_pos1 = pos1 - pos0;
-            let delta_pos2 = pos2 - pos0;
-
-            let delta_uv1 = uv1 - uv0;
-            let delta_uv2 = uv2 - uv0;
-
-            let r = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-            let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
-            // We flip the bitangent to enable right-handed normal
-            // maps with wgpu texture coordinate system
-            let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -r;
-
-            c[0].tangent = tangent.into();
-            c[1].tangent = tangent.into();
-            c[2].tangent = tangent.into();
-            c[0].bitangent = bitangent.into();
-            c[1].bitangent = bitangent.into();
-            c[2].bitangent = bitangent.into();
-        }
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex buffer"),
-            contents: bytemuck::cast_slice(vertex_vec.as_slice()),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
-        });
-
-        meshes_vec.push(Mesh::new(
-            device,
-            vertex_buffer,
-            vertex_vec.len() as u32,
-            MeshUniformData::new(translation),
-            mesh.material_id.unwrap_or(0),
-        ));
-    }
-
-    for material in &materials.unwrap() {
-        let material_uniform_data = MaterialUniformData::new(
-            material.ambient.unwrap_or([0.2, 0.2, 0.2]).into(),
-            material.diffuse.unwrap_or([1.0, 1.0, 1.0]).into(),
-            material.specular.unwrap_or([0.5, 0.5, 0.5]).into(),
-        );
-
-        let diffuse_texture = if let Some(diffuse_texture_path) = &material.diffuse_texture {
-            let root_path = &path.as_ref().parent().unwrap_or(Path::new("/"));
-            let texture_path: PathBuf = [
-                &root_path.to_path_buf(),
-                &PathBuf::from(&diffuse_texture_path),
-            ]
-            .iter()
-            .collect();
-
-            let texture_bytes = fs::read(texture_path).unwrap();
-
-            Texture::create_from_bytes(
-                &device,
-                &queue,
-                texture_bytes.as_slice(),
-                Some(&diffuse_texture_path.as_str()),
-                None,
-            )
-        } else {
-            Texture::create_1x1_texture(
+            scene: SceneUniform::new(
                 device,
-                queue,
-                [255, 255, 255, 255],
-                Some("1x1 texture"),
-                None,
-            )
-        };
-
-        let normal_texture = if let Some(normal_texture_path) = &material.normal_texture {
-            let root_path = &path.as_ref().parent().unwrap_or(Path::new("/"));
-            let texture_path: PathBuf = [
-                &root_path.to_path_buf(),
-                &PathBuf::from(&normal_texture_path),
-            ]
-            .iter()
-            .collect();
-
-            let texture_bytes = fs::read(texture_path).unwrap();
-
-            Texture::create_from_bytes(
-                &device,
-                &queue,
-                texture_bytes.as_slice(),
-                Some(&normal_texture_path.as_str()),
-                Some(wgpu::TextureFormat::Rgba8Unorm),
-            )
-        } else {
-            Texture::create_1x1_texture(
+                SceneUniformData::new(),
+                SceneUniformData::shadow(vec3(100.0, 100.0, 100.0), lighting_direction),
+            ),
+            lighting: LightingUniform::new(
                 device,
-                queue,
-                [128, 128, 255, 255],
-                Some("1x1 texture"),
-                Some(wgpu::TextureFormat::Rgba8Unorm),
-            )
-        };
-
-        materials_vec.push(Material::new(
-            device,
-            material_uniform_data,
-            diffuse_texture,
-            normal_texture,
-        ));
+                config,
+                LightingUniformData {
+                    direction: (lighting_direction, 0.0).into(),
+                    color: (lighting_color, 1.0).into(),
+                },
+            ),
+        }
     }
-
-    (meshes_vec, materials_vec)
 }

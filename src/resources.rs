@@ -7,17 +7,25 @@ use wgpu::{
     VertexBufferLayout, VertexState,
 };
 
-use crate::camera::Camera;
+use crate::{
+    camera::Camera,
+    texture::{Sampler, Texture},
+};
 
-// TODO: use perspective_view instead of perspective * view, and then have a camera struct build it for us.
+macro_rules! bytemuck_impl {
+    ($struct_name:ident) => {
+        unsafe impl bytemuck::Pod for $struct_name {}
+        unsafe impl bytemuck::Zeroable for $struct_name {}
+    };
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SceneUniformData {
     pub perspective_view: Mat4,
     pub camera_position: Vec4,
 }
-unsafe impl bytemuck::Pod for SceneUniformData {}
-unsafe impl bytemuck::Zeroable for SceneUniformData {}
+bytemuck_impl!(SceneUniformData);
 
 impl SceneUniformData {
     pub fn new() -> Self {
@@ -149,9 +157,7 @@ pub struct LightingUniform {
     pub shadow_map_sampler: Sampler,
     pub uniform_bind_group: wgpu::BindGroup,
 }
-
-unsafe impl bytemuck::Pod for LightingUniformData {}
-unsafe impl bytemuck::Zeroable for LightingUniformData {}
+bytemuck_impl!(LightingUniformData);
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
 // Contains shadow map (since this is used only for scene pass and not shadow pass)
@@ -244,9 +250,7 @@ pub struct MaterialUniformData {
     pub diffuse: Vec4,
     pub specular: Vec4,
 }
-
-unsafe impl bytemuck::Pod for MaterialUniformData {}
-unsafe impl bytemuck::Zeroable for MaterialUniformData {}
+bytemuck_impl!(MaterialUniformData);
 
 impl Default for MaterialUniformData {
     fn default() -> Self {
@@ -385,9 +389,7 @@ impl Material {
 pub struct MeshUniformData {
     pub world: Mat4,
 }
-
-unsafe impl bytemuck::Pod for MeshUniformData {}
-unsafe impl bytemuck::Zeroable for MeshUniformData {}
+bytemuck_impl!(MeshUniformData);
 
 impl MeshUniformData {
     pub fn new(world: Mat4) -> Self {
@@ -400,6 +402,8 @@ impl MeshUniformData {
 pub struct Mesh {
     pub vertex_buffer: wgpu::Buffer,
     pub vertex_count: u32,
+    pub index_buffer: wgpu::Buffer,
+    pub index_count: u32,
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub material_index: usize,
@@ -410,18 +414,21 @@ impl Mesh {
     pub fn new(
         device: &wgpu::Device,
         vertex_buffer: wgpu::Buffer,
+        index_buffer: wgpu::Buffer,
         vertex_count: u32,
+        index_count: u32,
         data: MeshUniformData,
         material_index: usize,
+        name: Option<&str>,
     ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Mesh uniform buffer"),
+            label: Some(format!("Uniform buffer for {}", name.unwrap_or("Mesh")).as_str()),
             contents: bytemuck::cast_slice(&[data]),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Mesh uniform bind group"),
+            label: Some(format!("Bind group {}", name.unwrap_or("Mesh")).as_str()),
             layout: &Mesh::bind_group_layout(device),
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -432,6 +439,8 @@ impl Mesh {
         Self {
             vertex_buffer,
             vertex_count,
+            index_buffer,
+            index_count,
             uniform_buffer,
             bind_group,
             material_index,
@@ -457,324 +466,4 @@ impl Mesh {
             }],
         })
     }
-}
-
-pub struct Texture {
-    pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-}
-
-impl Texture {
-    pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-
-    pub fn create_from_bytes(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        bytes: &[u8],
-        label: Option<&str>,
-        format: Option<wgpu::TextureFormat>,
-    ) -> Self {
-        let image = image::load_from_memory(bytes).unwrap().to_rgba8();
-        let dimensions = image.dimensions();
-
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label,
-            size: wgpu::Extent3d {
-                width: dimensions.0,
-                height: dimensions.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
-            label,
-            ..Default::default()
-        });
-
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &image,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * dimensions.0),
-                rows_per_image: Some(dimensions.1),
-            },
-            wgpu::Extent3d {
-                width: dimensions.0,
-                height: dimensions.1,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        Self { texture, view }
-    }
-
-    pub fn create_1x1_texture(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        rgba: [u8; 4],
-        label: Option<&str>,
-        format: Option<wgpu::TextureFormat>,
-    ) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label,
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
-            label,
-            ..Default::default()
-        });
-
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
-
-        Self { texture, view }
-    }
-
-    pub fn create_depth_texture(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-    ) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Depth texture"),
-            size: wgpu::Extent3d {
-                width: config.width,
-                height: config.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: Self::DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        Self { texture, view }
-    }
-}
-
-pub struct Sampler {
-    sampler: wgpu::Sampler,
-}
-
-impl Sampler {
-    pub fn diffuse_texture_sampler(device: &wgpu::Device) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Diffuse texture sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 0.0,
-            compare: None,
-            anisotropy_clamp: 1,
-            border_color: None,
-        });
-
-        Self { sampler }
-    }
-
-    pub fn normal_texture_sampler(device: &wgpu::Device) -> Self {
-        // TODO: will diffuse and normal samplers always be same? check in after mipmaps
-        Sampler::diffuse_texture_sampler(device)
-    }
-
-    pub fn shadow_map_sampler(device: &wgpu::Device) -> Self {
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Shadow map sampler (PCF)"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: Some(wgpu::CompareFunction::Less),
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 100.0,
-            anisotropy_clamp: 1,
-            border_color: None,
-        });
-
-        Self { sampler }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct VertexAttributes {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub uv: [f32; 2],
-    pub tangent: [f32; 3],
-    pub bitangent: [f32; 3],
-}
-
-unsafe impl bytemuck::Pod for VertexAttributes {}
-unsafe impl bytemuck::Zeroable for VertexAttributes {}
-
-impl VertexAttributes {
-    const BUFFER_LAYOUT: [VertexAttribute; 5] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3=> Float32x3, 4 => Float32x3];
-
-    fn buffer_layout() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<VertexAttributes>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &VertexAttributes::BUFFER_LAYOUT,
-        }
-    }
-}
-
-pub fn shadow_pipeline(
-    device: &Device,
-    surface_config: &wgpu::SurfaceConfiguration,
-) -> RenderPipeline {
-    let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shadow_pipeline.wgsl"));
-
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Shadow pipeline"),
-        layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("Shadow pipeline layout"),
-            bind_group_layouts: &[
-                &SceneUniform::bind_group_layout(device),
-                &Mesh::bind_group_layout(device),
-            ],
-            push_constant_ranges: &[],
-        })),
-        vertex: VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[VertexAttributes::buffer_layout()],
-        },
-        fragment: Some(FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[],
-        }),
-        primitive: PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: Texture::DEPTH_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-
-        multiview: None,
-    })
-}
-
-pub fn mesh_pipeline(
-    device: &Device,
-    surface_config: &wgpu::SurfaceConfiguration,
-) -> RenderPipeline {
-    let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/mesh_pipeline.wgsl"));
-
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Mesh pipeline"),
-        layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("Mesh pipeline layout"),
-            bind_group_layouts: &[
-                &SceneUniform::bind_group_layout(device),
-                &LightingUniform::bind_group_layout(device),
-                &Material::bind_group_layout(device),
-                &Mesh::bind_group_layout(device),
-            ],
-            push_constant_ranges: &[],
-        })),
-        vertex: VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[VertexAttributes::buffer_layout()],
-        },
-        fragment: Some(FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[Some(wgpu::ColorTargetState {
-                format: surface_config.format,
-                blend: Some(BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: Texture::DEPTH_FORMAT,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-
-        multiview: None,
-    })
 }

@@ -39,7 +39,6 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) tangent: vec3<f32>,
-    @location(4) bitangent: vec3<f32>
 }
 
 struct VertexOutput {
@@ -48,7 +47,6 @@ struct VertexOutput {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) tangent: vec3<f32>,
-    @location(4) bitangent: vec3<f32>,
     @location(5) shadow_coord: vec3<f32>
 }
 
@@ -63,7 +61,6 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 	out.shadow_coord.x = out.shadow_coord.x * 0.5 + 0.5;
     out.shadow_coord.y = out.shadow_coord.y * -0.5 + 0.5;
     out.tangent = (mesh.model * vec4<f32>(in.tangent, 0.0)).xyz;
-    out.bitangent = (mesh.model * vec4<f32>(in.bitangent, 0.0)).xyz;
     return out;
 }
 
@@ -75,11 +72,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     normal = normal - 0.5;
     var rotation = mat3x3<f32>(
         normalize(in.tangent),
-        normalize(in.bitangent),
+        normalize(cross(in.tangent, in.normal)),
         normalize(in.normal)
     );
 
-    normal = normalize(rotation * normal);
+    normal = in.normal; // TODO: we need to figure out some handedness and LH/RH stuff in gltf first before we can get back to normal mapping
     // percentage-closer filtering
     var increment = 1.0 / 1024.0;
     var visibility = 0.0;

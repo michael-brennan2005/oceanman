@@ -9,7 +9,9 @@ use winit::{
 use crate::{
     camera::Camera,
     loader::Scene,
-    resources::{mesh_pipeline, shadow_pipeline, SceneUniform, SceneUniformData, Texture},
+    pipelines::{mesh_pipeline, shadow_pipeline},
+    resources::SceneUniformData,
+    texture::Texture,
 };
 
 pub struct Renderer {
@@ -85,7 +87,7 @@ impl Renderer {
         let camera = Camera::default();
         let depth_buffer = Texture::create_depth_texture(&device, &config);
 
-        let scene = Scene::from_file(&device, &config, &queue, "resources/scene.json".to_string());
+        let scene = Scene::from_gltf(&device, &config, &queue, "resources/cube.gltf".to_string());
         let mesh_pipeline = mesh_pipeline(&device, &config);
         let shadow_pipeline = shadow_pipeline(&device, &config);
 
@@ -146,8 +148,10 @@ impl Renderer {
             for mesh in &self.scene.meshes {
                 shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
 
+                shadow_pass
+                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                shadow_pass.draw(0..mesh.vertex_count, 0..1);
+                shadow_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
         }
 
@@ -188,8 +192,9 @@ impl Renderer {
                     &[],
                 );
                 scene_pass.set_bind_group(3, &mesh.bind_group, &[]);
+                scene_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 scene_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                scene_pass.draw(0..mesh.vertex_count, 0..1);
+                scene_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
         }
 
