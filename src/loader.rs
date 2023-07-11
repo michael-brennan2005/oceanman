@@ -1,15 +1,10 @@
-use std::{
-    fmt, fs,
-    path::{self, Path, PathBuf},
-};
-
-use glam::{vec3, vec4, EulerRot, Mat4, Quat, U64Vec4, Vec2, Vec3, Vec4};
-use gltf::{image::Format, mesh::Mode};
+use glam::{vec3, Mat4, Quat, Vec3, Vec4};
+use gltf::image::Format;
 use serde::{Deserialize, Serialize};
-use tobj;
+
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages, ShaderModuleDescriptorSpirV,
+    BufferUsages,
 };
 
 use crate::{
@@ -49,13 +44,18 @@ pub struct Scene {
     pub lighting: LightingUniform,
 }
 
+#[derive(Debug)]
+pub enum SceneLoadError<'a> {
+    Message(&'a str),
+}
+
 impl Scene {
-    pub fn from_gltf(
+    pub fn from_gltf<'a>(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         queue: &wgpu::Queue,
         path: String,
-    ) -> Self {
+    ) -> Result<Self, SceneLoadError<'a>> {
         // TODO: proper error handling everywhere
         // TODO: proper labeling everywhere
         let (document, buffers, images) = gltf::import(path).unwrap();
@@ -80,16 +80,22 @@ impl Scene {
                     });
                     let material = primitive.material().index().unwrap_or(0);
 
-                    let indices = reader.read_indices().unwrap().into_u32();
+                    let indices = reader
+                        .read_indices()
+                        .ok_or(SceneLoadError::Message("Couldn't load indices"))?
+                        .into_u32();
                     let positions = reader
                         .read_positions()
-                        .unwrap()
+                        .ok_or(SceneLoadError::Message("Couldn't load positions"))?
                         .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
                     let normals = reader
                         .read_normals()
-                        .unwrap()
+                        .ok_or(SceneLoadError::Message("Couldn't load normals."))?
                         .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
-                    let uvs = reader.read_tex_coords(0).unwrap().into_f32();
+                    let uvs = reader
+                        .read_tex_coords(0)
+                        .ok_or(SceneLoadError::Message("Couldn't load uvs."))?
+                        .into_f32();
 
                     let tangents = reader.read_tangents();
 
@@ -170,7 +176,9 @@ impl Scene {
                 let image = &images[texture_info.texture().source().index()];
 
                 if image.format != Format::R8G8B8A8 {
-                    panic!("todo: error here")
+                    return Err(SceneLoadError::Message(
+                        "Wrong format for a diffuse texture.",
+                    ));
                 }
 
                 Texture::create_from_bytes(
@@ -186,7 +194,7 @@ impl Scene {
                 Texture::create_1x1_texture(
                     device,
                     queue,
-                    [255, 255, 255, 255],
+                    &[255, 255, 255, 255],
                     Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
                     None,
                 )
@@ -196,7 +204,9 @@ impl Scene {
                 let image = &images[texture_info.texture().source().index()];
 
                 if image.format != Format::R8G8B8 {
-                    panic!("todo: error here")
+                    return Err(SceneLoadError::Message(
+                        "Wrong format for a normal texture.",
+                    ));
                 }
 
                 Texture::create_from_bytes(
@@ -206,15 +216,15 @@ impl Scene {
                     image.width,
                     image.height,
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
-                    None,
+                    Some(wgpu::TextureFormat::Rgba8Unorm),
                 )
             } else {
                 Texture::create_1x1_texture(
                     device,
                     queue,
-                    [128, 128, 255, 255],
+                    &[128, 128, 255, 255],
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
-                    None,
+                    Some(wgpu::TextureFormat::Rgba8Unorm),
                 )
             };
 
@@ -228,7 +238,7 @@ impl Scene {
 
         let lighting_direction = Vec3::new(1.0, 0.0, 0.0);
         let lighting_color = Vec3::new(1.0, 1.0, 0.85);
-        Self {
+        Ok(Self {
             meshes,
             materials,
             scene: SceneUniform::new(
@@ -244,6 +254,6 @@ impl Scene {
                     color: (lighting_color, 1.0).into(),
                 },
             ),
-        }
+        })
     }
 }

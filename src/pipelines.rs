@@ -9,10 +9,7 @@ use crate::{
     texture::Texture,
 };
 
-pub fn shadow_pipeline(
-    device: &Device,
-    surface_config: &wgpu::SurfaceConfiguration,
-) -> RenderPipeline {
+pub fn shadow_pipeline(device: &Device) -> RenderPipeline {
     let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shadow_pipeline.wgsl"));
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

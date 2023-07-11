@@ -1,10 +1,4 @@
-use std::fs;
-
-use glam::{vec3, vec4, Mat4};
-use winit::{
-    event::{self, WindowEvent},
-    window::Window,
-};
+use winit::{event::WindowEvent, window::Window};
 
 use crate::{
     camera::Camera,
@@ -87,9 +81,10 @@ impl Renderer {
         let camera = Camera::default();
         let depth_buffer = Texture::create_depth_texture(&device, &config);
 
-        let scene = Scene::from_gltf(&device, &config, &queue, "resources/cube.gltf".to_string());
+        let scene =
+            Scene::from_gltf(&device, &config, &queue, "resources/cube.gltf".to_string()).unwrap();
         let mesh_pipeline = mesh_pipeline(&device, &config);
-        let shadow_pipeline = shadow_pipeline(&device, &config);
+        let shadow_pipeline = shadow_pipeline(&device);
 
         Self {
             surface,

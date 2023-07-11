@@ -1,11 +1,7 @@
 use std::num::NonZeroU64;
 
-use glam::{vec3, vec4, Mat4, UVec3, Vec3, Vec4};
-use wgpu::{
-    util::DeviceExt, BlendState, BufferBinding, Device, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, ShaderStages, VertexAttribute,
-    VertexBufferLayout, VertexState,
-};
+use glam::{vec3, vec4, Mat4, Vec3, Vec4};
+use wgpu::util::DeviceExt;
 
 use crate::{
     camera::Camera,

@@ -7,6 +7,7 @@ use winit::{
 mod camera;
 mod common;
 mod loader;
+mod passes;
 mod pipelines;
 mod renderer;
 mod resources;

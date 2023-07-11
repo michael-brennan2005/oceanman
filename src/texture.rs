@@ -1,4 +1,8 @@
+use wgpu::TextureFormat;
+
+// TODO: change all the create methods to be new, in line with rust idioms
 pub struct Texture {
+    pub format: wgpu::TextureFormat,
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
 }
@@ -6,7 +10,7 @@ pub struct Texture {
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    /// If format is left as None, then the format of the texture will be Rgba8UnormSrgb.
+    /// If format is left as None, then the format of the texture will be Rgba8UnormSrgb (color textures).
     pub fn create_from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -16,7 +20,7 @@ impl Texture {
         label: Option<&str>,
         format: Option<wgpu::TextureFormat>,
     ) -> Self {
-        let image = image::load_from_memory(bytes).unwrap().to_rgba8();
+        let format = format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
         let dimensions = (width, height);
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -29,7 +33,7 @@ impl Texture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
+            format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -39,6 +43,12 @@ impl Texture {
             ..Default::default()
         });
 
+        let bytes_per_pixel = match format {
+            wgpu::TextureFormat::Rgba8UnormSrgb => 4,
+            wgpu::TextureFormat::Rgba8Unorm => 4,
+            _ => panic!("Unsupported format: {:?}", format),
+        };
+
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture,
@@ -46,10 +56,10 @@ impl Texture {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &image,
+            bytes,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * dimensions.0),
+                bytes_per_row: Some(bytes_per_pixel * dimensions.0),
                 rows_per_image: Some(dimensions.1),
             },
             wgpu::Extent3d {
@@ -59,28 +69,34 @@ impl Texture {
             },
         );
 
-        Self { texture, view }
+        Self {
+            texture,
+            view,
+            format,
+        }
     }
 
-    /// If format is left as None, then the format of the texture will be Rgba8UnormSrgb.
-    pub fn create_1x1_texture(
+    pub fn create(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        rgba: [u8; 4],
+        width: u32,
+        height: u32,
         label: Option<&str>,
         format: Option<wgpu::TextureFormat>,
     ) -> Self {
+        let format = format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
+        let dimensions = (width, height);
+
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
+                width: dimensions.0,
+                height: dimensions.1,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb),
+            format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -90,27 +106,21 @@ impl Texture {
             ..Default::default()
         });
 
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
+        Self {
+            texture,
+            view,
+            format,
+        }
+    }
 
-        Self { texture, view }
+    pub fn create_1x1_texture(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        label: Option<&str>,
+        format: Option<TextureFormat>,
+    ) -> Self {
+        Texture::create_from_bytes(device, queue, data, 1, 1, label, format)
     }
 
     pub fn create_depth_texture(
@@ -134,7 +144,11 @@ impl Texture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        Self { texture, view }
+        Self {
+            texture,
+            view,
+            format: Self::DEPTH_FORMAT,
+        }
     }
 }
 
