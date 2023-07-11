@@ -1,5 +1,5 @@
 use glam::{vec3, Mat4, Quat, Vec3, Vec4};
-use gltf::image::Format;
+use gltf::{buffer::Data, image::Format};
 use serde::{Deserialize, Serialize};
 
 use wgpu::{
@@ -44,12 +44,126 @@ pub struct Scene {
     pub lighting: LightingUniform,
 }
 
+// TODO: make message contain a String and get rid of this lifetime b.s
 #[derive(Debug)]
 pub enum SceneLoadError<'a> {
     Message(&'a str),
 }
 
 impl Scene {
+    pub fn load_mesh<'a>(
+        device: &wgpu::Device,
+        node: &gltf::Node,
+        original_transform: Mat4,
+        buffers: &Vec<Data>,
+    ) -> Result<Vec<Mesh>, SceneLoadError<'a>> {
+        let (translation, rotation, scale) = node.transform().decomposed();
+
+        let rotation_fixed = [
+            rotation[0],
+            rotation[1],
+            rotation[2] * -1.0,
+            rotation[3] * -1.0,
+        ];
+        let translation_fixed = [translation[0], translation[1], translation[2] * -1.0];
+        let transform = original_transform
+            * Mat4::from_scale_rotation_translation(
+                scale.into(),
+                Quat::from_array(rotation_fixed),
+                translation_fixed.into(),
+            );
+
+        let mut meshes: Vec<Mesh> = Vec::new();
+
+        if let Some(mesh) = node.mesh() {
+            for primitive in mesh.primitives() {
+                let reader = primitive.reader(|buffer| {
+                    if buffer.index() < buffers.len() {
+                        Some(buffers[buffer.index()].0.as_slice())
+                    } else {
+                        None
+                    }
+                });
+                let material = primitive.material().index().unwrap_or(0);
+
+                let indices = reader
+                    .read_indices()
+                    .ok_or(SceneLoadError::Message("Couldn't load indices"))?
+                    .into_u32();
+                let positions = reader
+                    .read_positions()
+                    .ok_or(SceneLoadError::Message("Couldn't load positions"))?
+                    .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
+                let normals = reader
+                    .read_normals()
+                    .ok_or(SceneLoadError::Message("Couldn't load normals."))?
+                    .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
+                let uvs = reader
+                    .read_tex_coords(0)
+                    .ok_or(SceneLoadError::Message("Couldn't load uvs."))?
+                    .into_f32();
+
+                let tangents = reader.read_tangents();
+
+                let vertices = if tangents.is_some() {
+                    positions
+                        .zip(normals.zip(tangents.unwrap().zip(uvs)))
+                        .map(|(position, (normal, (tangent, uv)))| VertexAttributes {
+                            position,
+                            normal,
+                            uv,
+                            tangent: [tangent[0], tangent[1], tangent[2] * -1.0], // TODO: investigate handedness
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    positions
+                        .zip(normals.zip(uvs))
+                        .map(|(position, (normal, uv))| VertexAttributes {
+                            position,
+                            normal,
+                            uv,
+                            tangent: [0.0, 0.0, 0.0], // TODO: investigate handedness
+                        })
+                        .collect::<Vec<_>>()
+                };
+
+                let indices = indices.collect::<Vec<_>>();
+
+                // TODO: proper labels
+                let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                    label: Some(
+                        format!("Vertex buffer for {}", mesh.name().unwrap_or("")).as_str(),
+                    ),
+                    contents: bytemuck::cast_slice(vertices.as_slice()),
+                    usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+                });
+
+                let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                    label: Some(format!("Index buffer for {}", mesh.name().unwrap_or("")).as_str()),
+                    contents: bytemuck::cast_slice(indices.as_slice()),
+                    usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
+                });
+
+                meshes.push(Mesh::new(
+                    device,
+                    vertex_buffer,
+                    index_buffer,
+                    vertices.len() as u32,
+                    indices.len() as u32,
+                    MeshUniformData::new(transform),
+                    material,
+                    Some(format!("{}", mesh.name().unwrap_or("Mesh")).as_str()),
+                ));
+            }
+        }
+
+        for child in node.children() {
+            meshes.append(&mut Scene::load_mesh(device, &child, transform, buffers)?);
+        }
+
+        Ok(meshes)
+    }
+
     pub fn from_gltf<'a>(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
@@ -67,95 +181,12 @@ impl Scene {
 
         // TODO: get this to visit full node tree
         for node in scene.nodes() {
-            let (translation, rotation, scale) = node.transform().decomposed();
-
-            if let Some(mesh) = node.mesh() {
-                for primitive in mesh.primitives() {
-                    let reader = primitive.reader(|buffer| {
-                        if buffer.index() < buffers.len() {
-                            Some(buffers[buffer.index()].0.as_slice())
-                        } else {
-                            None
-                        }
-                    });
-                    let material = primitive.material().index().unwrap_or(0);
-
-                    let indices = reader
-                        .read_indices()
-                        .ok_or(SceneLoadError::Message("Couldn't load indices"))?
-                        .into_u32();
-                    let positions = reader
-                        .read_positions()
-                        .ok_or(SceneLoadError::Message("Couldn't load positions"))?
-                        .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
-                    let normals = reader
-                        .read_normals()
-                        .ok_or(SceneLoadError::Message("Couldn't load normals."))?
-                        .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
-                    let uvs = reader
-                        .read_tex_coords(0)
-                        .ok_or(SceneLoadError::Message("Couldn't load uvs."))?
-                        .into_f32();
-
-                    let tangents = reader.read_tangents();
-
-                    let vertices = if tangents.is_some() {
-                        positions
-                            .zip(normals.zip(tangents.unwrap().zip(uvs)))
-                            .map(|(position, (normal, (tangent, uv)))| VertexAttributes {
-                                position,
-                                normal,
-                                uv,
-                                tangent: [tangent[0], tangent[1], tangent[2] * -1.0], // TODO: investigate handedness
-                            })
-                            .collect::<Vec<_>>()
-                    } else {
-                        positions
-                            .zip(normals.zip(uvs))
-                            .map(|(position, (normal, uv))| VertexAttributes {
-                                position,
-                                normal,
-                                uv,
-                                tangent: [0.0, 0.0, 0.0], // TODO: investigate handedness
-                            })
-                            .collect::<Vec<_>>()
-                    };
-
-                    let indices = indices.collect::<Vec<_>>();
-
-                    // TODO: proper labels
-                    let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: Some(
-                            format!("Vertex buffer for {}", mesh.name().unwrap_or("")).as_str(),
-                        ),
-                        contents: bytemuck::cast_slice(vertices.as_slice()),
-                        usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
-                    });
-
-                    let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: Some(
-                            format!("Index buffer for {}", mesh.name().unwrap_or("")).as_str(),
-                        ),
-                        contents: bytemuck::cast_slice(indices.as_slice()),
-                        usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
-                    });
-
-                    meshes.push(Mesh::new(
-                        device,
-                        vertex_buffer,
-                        index_buffer,
-                        vertices.len() as u32,
-                        indices.len() as u32,
-                        MeshUniformData::new(Mat4::from_scale_rotation_translation(
-                            scale.into(),
-                            Quat::from_array(rotation),
-                            translation.into(),
-                        )),
-                        material,
-                        Some(format!("{}", mesh.name().unwrap_or("Mesh")).as_str()),
-                    ));
-                }
-            }
+            meshes.append(&mut Scene::load_mesh(
+                device,
+                &node,
+                Mat4::IDENTITY,
+                &buffers,
+            )?);
         }
 
         for material in document.materials() {
@@ -175,16 +206,26 @@ impl Scene {
             let diffuse_texture = if let Some(texture_info) = pbr.base_color_texture() {
                 let image = &images[texture_info.texture().source().index()];
 
-                if image.format != Format::R8G8B8A8 {
-                    return Err(SceneLoadError::Message(
-                        "Wrong format for a diffuse texture.",
-                    ));
-                }
+                let mut data: Vec<u8> = Vec::new();
+                println!("Diffuse format: {:?}", image.format);
+                let slice = match image.format {
+                    Format::R8G8B8A8 => image.pixels.as_slice(),
+                    Format::R8G8B8 => {
+                        for rgb in image.pixels.chunks(3) {
+                            data.push(rgb[0]);
+                            data.push(rgb[1]);
+                            data.push(rgb[2]);
+                            data.push(u8::MAX);
+                        }
+                        data.as_slice()
+                    }
+                    _ => todo!(),
+                };
 
                 Texture::create_from_bytes(
                     device,
                     queue,
-                    image.pixels.as_slice(),
+                    slice,
                     image.width,
                     image.height,
                     Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
@@ -202,11 +243,10 @@ impl Scene {
 
             let normal_texture = if let Some(texture_info) = material.normal_texture() {
                 let image = &images[texture_info.texture().source().index()];
-
+                // TODO: we need the same thing of redoing the slice like in diffuse_texutre
                 if image.format != Format::R8G8B8 {
-                    return Err(SceneLoadError::Message(
-                        "Wrong format for a normal texture.",
-                    ));
+                    println!("Found texture: {:?}", image.format);
+                    return Err(SceneLoadError::Message("Wrong texture for normal."));
                 }
 
                 Texture::create_from_bytes(

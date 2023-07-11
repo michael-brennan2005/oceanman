@@ -81,8 +81,13 @@ impl Renderer {
         let camera = Camera::default();
         let depth_buffer = Texture::create_depth_texture(&device, &config);
 
-        let scene =
-            Scene::from_gltf(&device, &config, &queue, "resources/cube.gltf".to_string()).unwrap();
+        let scene = Scene::from_gltf(
+            &device,
+            &config,
+            &queue,
+            "resources/free_isometric_cafe/scene.gltf".to_string(),
+        )
+        .unwrap();
         let mesh_pipeline = mesh_pipeline(&device, &config);
         let shadow_pipeline = shadow_pipeline(&device);
 
