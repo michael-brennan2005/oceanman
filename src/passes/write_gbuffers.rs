@@ -12,15 +12,16 @@ use crate::{
     texture::Texture,
 };
 
-struct GBuffers {
+// TODO: This is a resource, put bind group stuff in here
+pub struct GBuffers {
     /// World position of fragment, RGBA32
-    position: Texture,
+    pub position: Texture,
     /// Albedo of fragment, RGBA8
-    albedo: Texture,
+    pub albedo: Texture,
     /// Normal of fragment (world space), RGBA8
-    normal: Texture,
+    pub normal: Texture,
     /// Material of fragment, RGBA8 (sort of TODO at moment)
-    material: Texture,
+    pub material: Texture,
 }
 
 impl GBuffers {
@@ -67,9 +68,9 @@ impl GBuffers {
     }
 }
 
-struct WriteGBuffers {
+pub struct WriteGBuffers {
     /// FIXME: I think this needs to be RC because it will be used by Compose pass, but i am not sure.
-    gbuffers: Rc<GBuffers>,
+    pub gbuffers: Rc<GBuffers>,
     pipeline: wgpu::RenderPipeline,
     depth_buffer: Texture,
 }
@@ -84,7 +85,7 @@ impl WriteGBuffers {
             label: Some("Write gbuffers pipeline"),
 
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("Mesh pipeline layout"),
+                label: Some("Write gbuffers pipeline layout"),
                 bind_group_layouts: &[
                     &SceneUniform::bind_group_layout(device),
                     &Material::bind_group_layout(device),
@@ -103,7 +104,7 @@ impl WriteGBuffers {
                 targets: &[
                     Some(wgpu::ColorTargetState {
                         format: wgpu::TextureFormat::Rgba32Float,
-                        blend: Some(BlendState::REPLACE),
+                        blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     }),
                     Some(wgpu::ColorTargetState {
@@ -158,8 +159,6 @@ impl WriteGBuffers {
 
     /// Complete a GBuffersPass. Pass in the encoder that is being used for the whole render graph.
     pub fn pass(&self, scene: &Scene, encoder: &mut wgpu::CommandEncoder) {
-        encoder.push_debug_group("Write GBuffers");
-
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Write GBuffers"),
@@ -218,7 +217,5 @@ impl WriteGBuffers {
                 pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
         }
-
-        encoder.pop_debug_group();
     }
 }

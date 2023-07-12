@@ -11,6 +11,7 @@ mod passes;
 mod pipelines;
 mod renderer;
 mod resources;
+mod tangent_generation;
 mod texture;
 
 use renderer::Renderer;

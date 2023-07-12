@@ -1,0 +1,2 @@
+[keys.normal."="]
+b = ":run-shell-command cargo build"

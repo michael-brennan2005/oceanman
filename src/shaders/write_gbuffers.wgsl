@@ -11,17 +11,17 @@ struct MaterialUniforms {
     specular: vec4<f32>,
 } 
 
-@group(2) @binding(0) var<uniform> material: MaterialUniforms;
-@group(2) @binding(1) var diffuse_texture: texture_2d<f32>;
-@group(2) @binding(2) var diffuse_texture_sampler: sampler;
-@group(2) @binding(3) var normal_texture: texture_2d<f32>;
-@group(2) @binding(4) var normal_texture_sampler: sampler;
+@group(1) @binding(0) var<uniform> material: MaterialUniforms;
+@group(1) @binding(1) var diffuse_texture: texture_2d<f32>;
+@group(1) @binding(2) var diffuse_texture_sampler: sampler;
+@group(1) @binding(3) var normal_texture: texture_2d<f32>;
+@group(1) @binding(4) var normal_texture_sampler: sampler;
 
 struct MeshUniforms {
     model: mat4x4<f32>,
 }
 
-@group(3) @binding(0) var<uniform> mesh: MeshUniforms;
+@group(2) @binding(0) var<uniform> mesh: MeshUniforms;
 
 struct VertexInput {
     @builtin(vertex_index) index: u32,
@@ -65,7 +65,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 	output.position = vec4<f32>(in.world_position, 1.0);
 	output.albedo = vec4<f32>(textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb, 1.0);
     
-	normal = 
+	var normal = 
         textureSample(normal_texture, normal_texture_sampler, in.uv).rgb;
     normal = normal - 0.5;
     var rotation = mat3x3<f32>(
@@ -73,9 +73,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         normalize(cross(in.tangent, in.normal)),
         normalize(in.normal)
     );
-	normal = rotation * normal;
-	out.normal = vec4<f32>(normal, 1.0);
-	out.material = vec4<f32>(material.ambient, material.diffuse, material.specular);
+	normal = (normalize(rotation * normalize(normal)) * 0.5) + 0.5;
+	output.normal = vec4<f32>(normal, 1.0);
+	output.material = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 	
 	return output;	
 }

@@ -1,5 +1,6 @@
 use glam::{vec3, Mat4, Quat, Vec3, Vec4};
 use gltf::{buffer::Data, image::Format};
+use mikktspace::generate_tangents;
 use serde::{Deserialize, Serialize};
 
 use wgpu::{
@@ -13,29 +14,9 @@ use crate::{
         LightingUniform, LightingUniformData, Material, MaterialUniformData, Mesh, MeshUniformData,
         SceneUniform, SceneUniformData,
     },
+    tangent_generation::TangentGenerator,
     texture::Texture,
 };
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct LightingConfig {
-    direction: [f32; 3],
-    color: [f32; 3],
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct MeshConfig {
-    obj: String,
-    texture: Option<String>,
-    position: Option<[f32; 3]>,
-    rotation: Option<[f32; 3]>,
-    scale: Option<[f32; 3]>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SceneConfig {
-    pub lighting: LightingConfig,
-    pub mesh: MeshConfig,
-}
 
 pub struct Scene {
     pub meshes: Vec<Mesh>,
@@ -89,7 +70,8 @@ impl Scene {
                 let indices = reader
                     .read_indices()
                     .ok_or(SceneLoadError::Message("Couldn't load indices"))?
-                    .into_u32();
+                    .into_u32()
+                    .collect::<Vec<_>>();
                 let positions = reader
                     .read_positions()
                     .ok_or(SceneLoadError::Message("Couldn't load positions"))?
@@ -105,9 +87,9 @@ impl Scene {
 
                 let tangents = reader.read_tangents();
 
-                let vertices = if tangents.is_some() {
+                let mut vertices = if tangents.is_some() {
                     positions
-                        .zip(normals.zip(tangents.unwrap().zip(uvs)))
+                        .zip(normals.zip(tangents.clone().unwrap().zip(uvs)))
                         .map(|(position, (normal, (tangent, uv)))| VertexAttributes {
                             position,
                             normal,
@@ -127,7 +109,16 @@ impl Scene {
                         .collect::<Vec<_>>()
                 };
 
-                let indices = indices.collect::<Vec<_>>();
+                if tangents.is_none() {
+                    let mut tangent_generator = TangentGenerator {
+                        vertices: vertices.clone(),
+                        indices: indices.clone(),
+                    };
+
+                    generate_tangents(&mut tangent_generator);
+
+                    vertices = tangent_generator.vertices;
+                }
 
                 // TODO: proper labels
                 let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {

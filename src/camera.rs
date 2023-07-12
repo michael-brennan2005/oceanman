@@ -29,8 +29,8 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Self {
-            eye: vec3(0.0, 0.0, -3.0),
-            front: vec3(0.0, 0.0, 1.0),
+            eye: vec3(-3.0, 3.0, -3.0),
+            front: (vec3(0.0, 0.0, 0.0) - vec3(-3.0, 3.0, -3.0)).normalize(),
             up: vec3(0.0, 1.0, 0.0),
             aspect: 1600.0 / 900.0,
             fovy: 45.0_f32.to_radians(),

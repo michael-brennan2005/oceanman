@@ -3,6 +3,7 @@ use winit::{event::WindowEvent, window::Window};
 use crate::{
     camera::Camera,
     loader::Scene,
+    passes,
     pipelines::{mesh_pipeline, shadow_pipeline},
     resources::SceneUniformData,
     texture::Texture,
@@ -16,12 +17,10 @@ pub struct Renderer {
     size: winit::dpi::PhysicalSize<u32>,
 
     camera: Camera,
-    depth_buffer: Texture,
-
-    mesh_pipeline: wgpu::RenderPipeline,
-    shadow_pipeline: wgpu::RenderPipeline,
-
     scene: Scene,
+
+    write_gbuffers: passes::WriteGBuffers,
+    compose: passes::Compose,
 }
 
 impl Renderer {
@@ -68,7 +67,7 @@ impl Renderer {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format: surface_format,
             width: size.width,
             height: size.height,
@@ -79,8 +78,6 @@ impl Renderer {
         surface.configure(&device, &config);
 
         let camera = Camera::default();
-        let depth_buffer = Texture::create_depth_texture(&device, &config);
-
         let scene = Scene::from_gltf(
             &device,
             &config,
@@ -88,9 +85,9 @@ impl Renderer {
             "resources/free_isometric_cafe/scene.gltf".to_string(),
         )
         .unwrap();
-        let mesh_pipeline = mesh_pipeline(&device, &config);
-        let shadow_pipeline = shadow_pipeline(&device);
 
+        let write_gbuffers = passes::WriteGBuffers::new(&device, &config);
+        let compose = passes::Compose::new(&device, &config, write_gbuffers.gbuffers.clone());
         Self {
             surface,
             device,
@@ -98,10 +95,9 @@ impl Renderer {
             config,
             size,
             camera,
-            depth_buffer,
             scene,
-            shadow_pipeline,
-            mesh_pipeline,
+            write_gbuffers,
+            compose,
         }
     }
 
@@ -128,76 +124,55 @@ impl Renderer {
                 label: Some("Command encoder"),
             });
 
-        {
-            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shadow pass"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.scene.lighting.shadow_map.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
-                    }),
-                    stencil_ops: None,
-                }),
-            });
+        //        {
+        //            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        //                label: Some("Shadow pass"),
+        //                color_attachments: &[],
+        //                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+        //                    view: &self.scene.lighting.shadow_map.view,
+        //                    depth_ops: Some(wgpu::Operations {
+        //                        load: wgpu::LoadOp::Clear(1.0),
+        //                        store: true,
+        //                    }),
+        //                    stencil_ops: None,
+        //                }),
+        //            });
+        //
+        //            shadow_pass.set_pipeline(&self.shadow_pipeline);
+        //            shadow_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
+        //
+        //            for mesh in &self.scene.meshes {
+        //                shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
+        //
+        //                shadow_pass
+        //                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        //                shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+        //                shadow_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+        //            }
+        //        }
 
-            shadow_pass.set_pipeline(&self.shadow_pipeline);
-            shadow_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
+        self.write_gbuffers.pass(&self.scene, &mut encoder);
+        self.compose.pass(&self.scene, &mut encoder);
 
-            for mesh in &self.scene.meshes {
-                shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
-
-                shadow_pass
-                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                shadow_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
-            }
-        }
-
-        {
-            let mut scene_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Scene pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_buffer.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
-                    }),
-                    stencil_ops: None,
-                }),
-            });
-
-            scene_pass.set_pipeline(&self.mesh_pipeline);
-            scene_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
-            scene_pass.set_bind_group(1, &self.scene.lighting.uniform_bind_group, &[]);
-
-            for mesh in &self.scene.meshes {
-                scene_pass.set_bind_group(
-                    2,
-                    &self.scene.materials[mesh.material_index].bind_group,
-                    &[],
-                );
-                scene_pass.set_bind_group(3, &mesh.bind_group, &[]);
-                scene_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                scene_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                scene_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
-            }
-        }
-
+        encoder.copy_texture_to_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.compose.output.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyTexture {
+                texture: &output.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::Extent3d {
+                width: self.config.width,
+                height: self.config.height,
+                depth_or_array_layers: 1,
+            },
+        );
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
         Ok(())
