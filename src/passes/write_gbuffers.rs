@@ -14,8 +14,8 @@ use crate::{
 
 // TODO: This is a resource, put bind group stuff in here
 pub struct GBuffers {
-    /// World position of fragment, RGBA32
-    pub position: Texture,
+    /// Depth buffer (used to calculate world position), Depth24Plus
+    pub depth: Texture,
     /// Albedo of fragment, RGBA8
     pub albedo: Texture,
     /// Normal of fragment (world space), RGBA8
@@ -26,13 +26,7 @@ pub struct GBuffers {
 
 impl GBuffers {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let position = Texture::create(
-            device,
-            config.width,
-            config.height,
-            Some("Gbuffers - position (worldspace)"),
-            Some(wgpu::TextureFormat::Rgba32Float),
-        );
+        let depth = Texture::create_depth_texture(device, config);
 
         // TODO: color tonemapping issues. get a decal image (like a logo or some random thing) and see what it does.
         let albedo = Texture::create(
@@ -60,7 +54,7 @@ impl GBuffers {
         );
 
         Self {
-            position,
+            depth,
             albedo,
             normal,
             material,
@@ -72,7 +66,6 @@ pub struct WriteGBuffers {
     /// FIXME: I think this needs to be RC because it will be used by Compose pass, but i am not sure.
     pub gbuffers: Rc<GBuffers>,
     pipeline: wgpu::RenderPipeline,
-    depth_buffer: Texture,
 }
 
 impl WriteGBuffers {
@@ -102,11 +95,6 @@ impl WriteGBuffers {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba32Float,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
                     Some(wgpu::ColorTargetState {
                         format: wgpu::TextureFormat::Rgba8Unorm,
                         blend: Some(BlendState::REPLACE),
@@ -149,12 +137,7 @@ impl WriteGBuffers {
             multiview: None,
         });
 
-        let depth_buffer = Texture::create_depth_texture(device, config);
-        Self {
-            gbuffers,
-            pipeline,
-            depth_buffer,
-        }
+        Self { gbuffers, pipeline }
     }
 
     /// Complete a GBuffersPass. Pass in the encoder that is being used for the whole render graph.
@@ -163,14 +146,6 @@ impl WriteGBuffers {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Write GBuffers"),
                 color_attachments: &[
-                    Some(wgpu::RenderPassColorAttachment {
-                        view: &self.gbuffers.position.view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: true,
-                        },
-                    }),
                     Some(wgpu::RenderPassColorAttachment {
                         view: &self.gbuffers.albedo.view,
                         resolve_target: None,
@@ -197,7 +172,7 @@ impl WriteGBuffers {
                     }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_buffer.view,
+                    view: &self.gbuffers.depth.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,

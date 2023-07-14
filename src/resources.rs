@@ -19,6 +19,7 @@ macro_rules! bytemuck_impl {
 #[derive(Clone, Copy, Debug)]
 pub struct SceneUniformData {
     pub perspective_view: Mat4,
+    pub inverse_perspective_view: Mat4,
     pub camera_position: Vec4,
 }
 bytemuck_impl!(SceneUniformData);
@@ -27,6 +28,7 @@ impl SceneUniformData {
     pub fn new() -> Self {
         Self {
             perspective_view: Mat4::IDENTITY,
+            inverse_perspective_view: Mat4::IDENTITY.inverse(),
             camera_position: vec4(0.0, 0.0, 0.0, 1.0),
         }
     }
@@ -35,6 +37,7 @@ impl SceneUniformData {
         let (perspective_view, camera_position) = camera.build_uniforms();
         Self {
             perspective_view,
+            inverse_perspective_view: perspective_view.inverse(),
             camera_position,
         }
     }
@@ -47,6 +50,7 @@ impl SceneUniformData {
 
         Self {
             perspective_view,
+            inverse_perspective_view: perspective_view.inverse(),
             camera_position: vec4(0.0, 0.0, 0.0, 1.0),
         }
     }

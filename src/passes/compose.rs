@@ -32,7 +32,7 @@ impl Compose {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            sample_type: wgpu::TextureSampleType::Depth,
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
@@ -77,7 +77,7 @@ impl Compose {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&gbuffers.position.view),
+                    resource: wgpu::BindingResource::TextureView(&gbuffers.depth.view),
                 },
                 BindGroupEntry {
                     binding: 1,

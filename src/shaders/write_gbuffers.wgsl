@@ -1,5 +1,6 @@
 struct SceneUniforms {
 	perspective_view: mat4x4<f32>,
+    inverse_perspective_view: mat4x4<f32>,
 	camera_pos: vec4<f32>
 }
 
@@ -52,17 +53,15 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 }
 
 struct FragmentOutput {
-	@location(0) position: vec4<f32>,
-	@location(1) albedo: vec4<f32>,
-	@location(2) normal: vec4<f32>,
-	@location(3) material: vec4<f32>
+	@location(0) albedo: vec4<f32>,
+	@location(1) normal: vec4<f32>,
+	@location(2) material: vec4<f32>
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
 	var output: FragmentOutput;
 
-	output.position = vec4<f32>(in.world_position, 1.0);
 	output.albedo = vec4<f32>(textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb, 1.0);
     
 	var normal = 
