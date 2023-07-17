@@ -87,7 +87,8 @@ impl Renderer {
             &device,
             &config,
             &queue,
-            "resources/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf".to_string(),
+            "resources/glTF-Sample-Models/2.0/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
+                .to_string(),
         )
         .unwrap();
 

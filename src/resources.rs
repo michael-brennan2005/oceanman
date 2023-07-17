@@ -278,6 +278,8 @@ pub struct Material {
     pub diffuse_texture_sampler: Sampler,
     pub normal_texture: Texture,
     pub normal_texture_sampler: Sampler,
+    pub metal_roughness_texture: Texture,
+    pub metal_roughness_texture_sampler: Sampler,
 }
 
 impl Material {
@@ -286,6 +288,7 @@ impl Material {
         data: MaterialUniformData,
         diffuse_texture: Texture,
         normal_texture: Texture,
+        metal_roughness_texture: Texture,
     ) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Material uniform buffer"),
@@ -295,6 +298,7 @@ impl Material {
 
         let diffuse_texture_sampler = Sampler::diffuse_texture_sampler(&device);
         let normal_texture_sampler = Sampler::normal_texture_sampler(&device);
+        let metal_roughness_texture_sampler = Sampler::normal_texture_sampler(&device);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Material bind group"),
@@ -320,6 +324,16 @@ impl Material {
                     binding: 4,
                     resource: wgpu::BindingResource::Sampler(&normal_texture_sampler.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&metal_roughness_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::Sampler(
+                        &metal_roughness_texture_sampler.sampler,
+                    ),
+                },
             ],
         });
 
@@ -330,6 +344,8 @@ impl Material {
             diffuse_texture_sampler,
             normal_texture,
             normal_texture_sampler,
+            metal_roughness_texture,
+            metal_roughness_texture_sampler,
         }
     }
 
@@ -375,6 +391,22 @@ impl Material {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,

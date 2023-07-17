@@ -182,6 +182,7 @@ impl Scene {
 
         for material in document.materials() {
             let pbr = material.pbr_metallic_roughness();
+
             let material_data = MaterialUniformData {
                 ambient: pbr.base_color_factor().into(),
                 diffuse: {
@@ -270,11 +271,62 @@ impl Scene {
                 )
             };
 
+            let metal_roughness_texture =
+                if let Some(texture_info) = pbr.metallic_roughness_texture() {
+                    let image = &images[texture_info.texture().source().index()];
+
+                    let mut data: Vec<u8> = Vec::new();
+                    println!("Normal format: {:?}", image.format);
+                    let slice = match image.format {
+                        Format::R8G8B8A8 => image.pixels.as_slice(),
+                        Format::R8G8B8 => {
+                            for rgb in image.pixels.chunks(3) {
+                                data.push(rgb[0]);
+                                data.push(rgb[1]);
+                                data.push(rgb[2]);
+                                data.push(u8::MAX);
+                            }
+                            data.as_slice()
+                        }
+                        _ => todo!(),
+                    };
+
+                    Texture::create_from_bytes(
+                        device,
+                        queue,
+                        slice,
+                        image.width,
+                        image.height,
+                        Some(
+                            format!(
+                                "Metallic-roughness texture for {}",
+                                material.name().unwrap_or("")
+                            )
+                            .as_str(),
+                        ),
+                        Some(wgpu::TextureFormat::Rgba8Unorm),
+                    )
+                } else {
+                    Texture::create_1x1_texture(
+                        device,
+                        queue,
+                        &[255, 128, 128, 255],
+                        Some(
+                            format!(
+                                "Metallic-roughness texture for {}",
+                                material.name().unwrap_or("")
+                            )
+                            .as_str(),
+                        ),
+                        Some(wgpu::TextureFormat::Rgba8Unorm),
+                    )
+                };
             materials.push(Material::new(
                 device,
                 material_data,
                 diffuse_texture,
                 normal_texture,
+                metal_roughness_texture,
             ));
         }
 

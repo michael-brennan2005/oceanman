@@ -17,6 +17,8 @@ struct MaterialUniforms {
 @group(1) @binding(2) var diffuse_texture_sampler: sampler;
 @group(1) @binding(3) var normal_texture: texture_2d<f32>;
 @group(1) @binding(4) var normal_texture_sampler: sampler;
+@group(1) @binding(5) var metal_roughness_texture: texture_2d<f32>;
+@group(1) @binding(6) var metal_roughness_texture_sampler: sampler;
 
 struct MeshUniforms {
     model: mat4x4<f32>,
@@ -75,7 +77,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     );
 	normal = (normalize(rotation * normalize(normal)) * 0.5) + 0.5;
 	output.normal = vec4<f32>(normal, 1.0);
-	output.material = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+
+    // red -> metal, green -> roughness
+	output.material = vec4<f32>(textureSample(metal_roughness_texture, metal_roughness_texture_sampler, in.uv).bg, 1.0, 1.0);
 	
 	return output;	
 }
