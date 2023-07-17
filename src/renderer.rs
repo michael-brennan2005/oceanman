@@ -2,6 +2,7 @@ use winit::{event::WindowEvent, window::Window};
 
 use crate::{
     camera::Camera,
+    gbuffers::GBuffers,
     loader::Scene,
     passes,
     pipelines::{mesh_pipeline, shadow_pipeline},
@@ -18,9 +19,13 @@ pub struct Renderer {
 
     camera: Camera,
     scene: Scene,
+    gbuffers: GBuffers,
+
+    compose_output: Texture,
 
     write_gbuffers: passes::WriteGBuffers,
     compose: passes::Compose,
+    tonemapping: passes::Tonemapping,
 }
 
 impl Renderer {
@@ -82,12 +87,22 @@ impl Renderer {
             &device,
             &config,
             &queue,
-            "resources/free_isometric_cafe/scene.gltf".to_string(),
+            "resources/glTF-Sample-Models/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf".to_string(),
         )
         .unwrap();
 
+        let gbuffers = GBuffers::new(&device, &config);
+        let compose_output = Texture::create(
+            &device,
+            config.width,
+            config.height,
+            Some("Compose output/Tonemapping input"),
+            Some(wgpu::TextureFormat::Rgba16Float),
+        );
+
         let write_gbuffers = passes::WriteGBuffers::new(&device, &config);
-        let compose = passes::Compose::new(&device, &config, write_gbuffers.gbuffers.clone());
+        let compose = passes::Compose::new(&device);
+        let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
         Self {
             surface,
             device,
@@ -96,8 +111,11 @@ impl Renderer {
             size,
             camera,
             scene,
+            gbuffers,
+            compose_output,
             write_gbuffers,
             compose,
+            tonemapping,
         }
     }
 
@@ -151,28 +169,16 @@ impl Renderer {
         //            }
         //        }
 
-        self.write_gbuffers.pass(&self.scene, &mut encoder);
-        self.compose.pass(&self.scene, &mut encoder);
-
-        encoder.copy_texture_to_texture(
-            wgpu::ImageCopyTexture {
-                texture: &self.compose.output.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::ImageCopyTexture {
-                texture: &output.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::Extent3d {
-                width: self.config.width,
-                height: self.config.height,
-                depth_or_array_layers: 1,
-            },
+        self.write_gbuffers
+            .pass(&self.scene, &self.gbuffers, &mut encoder);
+        self.compose.pass(
+            &self.scene,
+            &self.gbuffers,
+            &self.compose_output.view,
+            &mut encoder,
         );
+
+        self.tonemapping.pass(&view, &mut encoder);
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
         Ok(())

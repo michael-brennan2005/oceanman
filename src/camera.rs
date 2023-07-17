@@ -1,6 +1,7 @@
 use glam::{vec3, vec4, Mat4, Vec3, Vec4};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 
+// TODO: better camera omg
 // TODO: holy shit there has to be a better way this is too many variables
 // TODO: this code is pretty much a straight - port of what was from zig + shoehorning in to fit how winit works. better, more rust-y way?
 pub struct Camera {

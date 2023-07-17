@@ -62,7 +62,8 @@ struct FragmentOutput {
 fn fs_main(in: VertexOutput) -> FragmentOutput {
 	var output: FragmentOutput;
 
-	output.albedo = vec4<f32>(textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb, 1.0);
+    // Diffuse texture is stored in rgba8unormsrgb, so srgb->linear conversion happens automatically 
+    output.albedo = vec4<f32>(textureSample(diffuse_texture, diffuse_texture_sampler, in.uv).rgb, 1.0);
     
 	var normal = 
         textureSample(normal_texture, normal_texture_sampler, in.uv).rgb;

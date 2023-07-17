@@ -35,6 +35,12 @@ fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
 @fragment
 fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 
+	let albedoo = textureLoad(
+		albedo,
+		vec2<i32>(floor(position.xy)),
+		0
+	);
+	
 	let depthh = textureLoad(
 		depth,
 		vec2<i32>(floor(position.xy)),
@@ -45,5 +51,5 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let coordUV = position.xy / vec2<f32>(bufferSize);
 	let position = screen_to_world_coord(coordUV, depthh);
 	
-	return vec4<f32>(position,1.0);
+	return vec4<f32>(albedoo.rgb,1.0);
 }

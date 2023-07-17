@@ -1,70 +1,19 @@
 use std::{rc::Rc, sync::Arc};
 
 use wgpu::{
-    BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState,
-    RenderPipeline, VertexState,
+    BindGroupEntry, BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor,
+    PrimitiveState, RenderPipeline, VertexState,
 };
 
 use crate::{
     common::VertexAttributes,
+    gbuffers::GBuffers,
     loader::Scene,
     resources::{Material, Mesh, SceneUniform},
     texture::Texture,
 };
 
-// TODO: This is a resource, put bind group stuff in here
-pub struct GBuffers {
-    /// Depth buffer (used to calculate world position), Depth24Plus
-    pub depth: Texture,
-    /// Albedo of fragment, RGBA8
-    pub albedo: Texture,
-    /// Normal of fragment (world space), RGBA8
-    pub normal: Texture,
-    /// Material of fragment, RGBA8 (sort of TODO at moment)
-    pub material: Texture,
-}
-
-impl GBuffers {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let depth = Texture::create_depth_texture(device, config);
-
-        // TODO: color tonemapping issues. get a decal image (like a logo or some random thing) and see what it does.
-        let albedo = Texture::create(
-            device,
-            config.width,
-            config.height,
-            Some("Gbuffers - albedo"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
-        );
-
-        let normal = Texture::create(
-            device,
-            config.width,
-            config.height,
-            Some("Gbuffers - normal (worldspace)"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
-        );
-
-        let material = Texture::create(
-            device,
-            config.width,
-            config.height,
-            Some("Gbuffers - material"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
-        );
-
-        Self {
-            depth,
-            albedo,
-            normal,
-            material,
-        }
-    }
-}
-
 pub struct WriteGBuffers {
-    /// FIXME: I think this needs to be RC because it will be used by Compose pass, but i am not sure.
-    pub gbuffers: Rc<GBuffers>,
     pipeline: wgpu::RenderPipeline,
 }
 
@@ -72,7 +21,6 @@ impl WriteGBuffers {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../shaders/write_gbuffers.wgsl"));
-        let gbuffers = Rc::new(GBuffers::new(device, config));
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Write gbuffers pipeline"),
@@ -137,17 +85,17 @@ impl WriteGBuffers {
             multiview: None,
         });
 
-        Self { gbuffers, pipeline }
+        Self { pipeline }
     }
 
     /// Complete a GBuffersPass. Pass in the encoder that is being used for the whole render graph.
-    pub fn pass(&self, scene: &Scene, encoder: &mut wgpu::CommandEncoder) {
+    pub fn pass(&self, scene: &Scene, gbuffers: &GBuffers, encoder: &mut wgpu::CommandEncoder) {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Write GBuffers"),
                 color_attachments: &[
                     Some(wgpu::RenderPassColorAttachment {
-                        view: &self.gbuffers.albedo.view,
+                        view: &gbuffers.albedo.view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -155,7 +103,7 @@ impl WriteGBuffers {
                         },
                     }),
                     Some(wgpu::RenderPassColorAttachment {
-                        view: &self.gbuffers.normal.view,
+                        view: &gbuffers.normal.view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -163,7 +111,7 @@ impl WriteGBuffers {
                         },
                     }),
                     Some(wgpu::RenderPassColorAttachment {
-                        view: &self.gbuffers.material.view,
+                        view: &gbuffers.material.view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -172,7 +120,7 @@ impl WriteGBuffers {
                     }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.gbuffers.depth.view,
+                    view: &gbuffers.depth.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,

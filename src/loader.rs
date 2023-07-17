@@ -234,16 +234,27 @@ impl Scene {
 
             let normal_texture = if let Some(texture_info) = material.normal_texture() {
                 let image = &images[texture_info.texture().source().index()];
-                // TODO: we need the same thing of redoing the slice like in diffuse_texutre
-                if image.format != Format::R8G8B8 {
-                    println!("Found texture: {:?}", image.format);
-                    return Err(SceneLoadError::Message("Wrong texture for normal."));
-                }
+
+                let mut data: Vec<u8> = Vec::new();
+                println!("Normal format: {:?}", image.format);
+                let slice = match image.format {
+                    Format::R8G8B8A8 => image.pixels.as_slice(),
+                    Format::R8G8B8 => {
+                        for rgb in image.pixels.chunks(3) {
+                            data.push(rgb[0]);
+                            data.push(rgb[1]);
+                            data.push(rgb[2]);
+                            data.push(u8::MAX);
+                        }
+                        data.as_slice()
+                    }
+                    _ => todo!(),
+                };
 
                 Texture::create_from_bytes(
                     device,
                     queue,
-                    image.pixels.as_slice(),
+                    slice,
                     image.width,
                     image.height,
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),

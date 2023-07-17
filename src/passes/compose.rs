@@ -2,97 +2,21 @@ use std::rc::Rc;
 
 use wgpu::{
     BindGroupEntry, BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor,
-    PrimitiveState, VertexState,
+    PrimitiveState, TextureView, VertexState,
 };
 
-use crate::{common::VertexAttributes, loader::Scene, resources::SceneUniform, texture::Texture};
-
-use super::GBuffers;
+use crate::{
+    common::VertexAttributes, gbuffers::GBuffers, loader::Scene, resources::SceneUniform,
+    texture::Texture,
+};
 
 pub struct Compose {
-    pub gbuffers: Rc<GBuffers>,
-    gbuffers_bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
-    pub output: Texture,
 }
 
 impl Compose {
-    pub fn new(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        gbuffers: Rc<GBuffers>,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/compose.wgsl"));
-
-        let gbuffers_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("gbuffers bind group layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        let gbuffers_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compose - gbuffers bind group"),
-            layout: &gbuffers_bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&gbuffers.depth.view),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&gbuffers.albedo.view),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&gbuffers.normal.view),
-                },
-                BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&gbuffers.material.view),
-                },
-            ],
-        });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Compose gbuffers pipeline"),
@@ -101,7 +25,7 @@ impl Compose {
                 label: Some("Compose pipeline layout"),
                 bind_group_layouts: &[
                     &SceneUniform::bind_group_layout(device),
-                    &gbuffers_bind_group_layout,
+                    &GBuffers::bind_group_layout(device),
                 ],
                 push_constant_ranges: &[],
             })),
@@ -114,7 +38,7 @@ impl Compose {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
+                    format: wgpu::TextureFormat::Rgba16Float,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -138,27 +62,21 @@ impl Compose {
             multiview: None,
         });
 
-        let output = Texture::create(
-            device,
-            config.width,
-            config.height,
-            Some("Compose output"),
-            Some(config.format),
-        );
-        Self {
-            gbuffers,
-            gbuffers_bind_group,
-            pipeline,
-            output,
-        }
+        Self { pipeline }
     }
 
-    pub fn pass(&self, scene: &Scene, encoder: &mut wgpu::CommandEncoder) {
+    pub fn pass(
+        &self,
+        scene: &Scene,
+        gbuffers: &GBuffers,
+        output: &TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Compose"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.output.view,
+                    view: output,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -170,7 +88,7 @@ impl Compose {
 
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &scene.scene.uniform_bind_group, &[]);
-            pass.set_bind_group(1, &self.gbuffers_bind_group, &[]);
+            pass.set_bind_group(1, &gbuffers.bind_group, &[]);
 
             pass.draw(0..6, 0..1);
         }
