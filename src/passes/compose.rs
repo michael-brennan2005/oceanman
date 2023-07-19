@@ -6,7 +6,10 @@ use wgpu::{
 };
 
 use crate::{
-    common::VertexAttributes, gbuffers::GBuffers, loader::Scene, resources::SceneUniform,
+    common::VertexAttributes,
+    gbuffers::GBuffers,
+    loader::Scene,
+    resources::{LightingUniform, SceneUniform},
     texture::Texture,
 };
 
@@ -26,6 +29,7 @@ impl Compose {
                 bind_group_layouts: &[
                     &SceneUniform::bind_group_layout(device),
                     &GBuffers::bind_group_layout(device),
+                    &LightingUniform::bind_group_layout(device),
                 ],
                 push_constant_ranges: &[],
             })),
@@ -89,6 +93,7 @@ impl Compose {
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &scene.scene.uniform_bind_group, &[]);
             pass.set_bind_group(1, &gbuffers.bind_group, &[]);
+            pass.set_bind_group(2, &scene.lighting.uniform_bind_group, &[]);
 
             pass.draw(0..6, 0..1);
         }

@@ -1,12 +1,7 @@
 use winit::{event::WindowEvent, window::Window};
 
 use crate::{
-    camera::Camera,
-    gbuffers::GBuffers,
-    loader::Scene,
-    passes,
-    pipelines::{mesh_pipeline, shadow_pipeline},
-    resources::SceneUniformData,
+    camera::Camera, gbuffers::GBuffers, loader::Scene, passes, resources::SceneUniformData,
     texture::Texture,
 };
 

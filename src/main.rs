@@ -9,7 +9,6 @@ mod common;
 mod gbuffers;
 mod loader;
 mod passes;
-mod pipelines;
 mod renderer;
 mod resources;
 mod tangent_generation;

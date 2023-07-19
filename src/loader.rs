@@ -331,7 +331,6 @@ impl Scene {
         }
 
         let lighting_direction = Vec3::new(1.0, 0.0, 0.0);
-        let lighting_color = Vec3::new(1.0, 1.0, 0.85);
         Ok(Self {
             meshes,
             materials,
@@ -343,10 +342,12 @@ impl Scene {
             lighting: LightingUniform::new(
                 device,
                 config,
-                LightingUniformData {
-                    direction: (lighting_direction, 0.0).into(),
-                    color: (lighting_color, 1.0).into(),
-                },
+                LightingUniformData::new(vec![
+                    (vec3(-4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(-4.0, -4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(4.0, -4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                ]),
             ),
         })
     }

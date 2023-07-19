@@ -144,20 +144,39 @@ impl SceneUniform {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Clone, Copy, Debug)]
 pub struct LightingUniformData {
-    pub direction: Vec4,
-    pub color: Vec4,
+    pub count: u32,
+    pub colors: [Vec4; 16],
+    pub positions: [Vec4; 16],
+}
+bytemuck_impl!(LightingUniformData);
+
+impl LightingUniformData {
+    // 0th element is position, 1st element is color
+    pub fn new(lighting: Vec<(Vec3, Vec3)>) -> Self {
+        let count = lighting.len().min(16) as u32;
+        let mut colors: [Vec4; 16] = [vec4(0.0, 0.0, 0.0, 0.0); 16];
+        let mut positions: [Vec4; 16] = [vec4(0.0, 0.0, 0.0, 0.0); 16];
+
+        for i in 0..(count as usize) {
+            positions[i] = (lighting[i].0, 1.0).into();
+            colors[i] = (lighting[i].1, 1.0).into();
+        }
+
+        Self {
+            colors,
+            positions,
+            count,
+        }
+    }
 }
 
 pub struct LightingUniform {
     pub uniform_buffer: wgpu::Buffer,
-    pub shadow_map: Texture,
-    pub shadow_map_sampler: Sampler,
     pub uniform_bind_group: wgpu::BindGroup,
 }
-bytemuck_impl!(LightingUniformData);
 
 // TODO: write out the min_binding_sizes (avoid checks at draw call)
 // Contains shadow map (since this is used only for scene pass and not shadow pass)
@@ -174,32 +193,17 @@ impl LightingUniform {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
         });
 
-        let shadow_map = Texture::create_depth_texture(&device, &config);
-        let shadow_map_sampler = Sampler::shadow_map_sampler(&device);
-
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Lighting uniform bind group"),
             layout: &LightingUniform::bind_group_layout(device),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&shadow_map.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&shadow_map_sampler.sampler),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         LightingUniform {
             uniform_buffer,
-            shadow_map,
-            shadow_map_sampler,
             uniform_bind_group,
         }
     }
@@ -211,34 +215,16 @@ impl LightingUniform {
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Lighting uniform bind group layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::all(),
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         })
     }
 }
