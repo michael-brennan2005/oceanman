@@ -1,8 +1,7 @@
-use wgpu::BindGroupEntry;
+use wgpu::{BindGroupEntry, TextureUsages};
 
 use crate::texture::Texture;
 
-// TODO: This is a resource, put bind group stuff in here
 pub struct GBuffers {
     /// Depth buffer (used to calculate world position), Depth24Plus
     pub depth: Texture,
@@ -10,7 +9,7 @@ pub struct GBuffers {
     pub albedo: Texture,
     /// Normal of fragment (world space), RGBA8
     pub normal: Texture,
-    /// Material of fragment, RGBA8 (sort of TODO at moment)
+    /// Material of fragment, RGBA8
     pub material: Texture,
 
     pub bind_group: wgpu::BindGroup,
@@ -18,31 +17,33 @@ pub struct GBuffers {
 
 impl GBuffers {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let depth = Texture::create_depth_texture(device, config);
+        let depth = Texture::new_depth_texture(device, config);
 
-        // TODO: color tonemapping issues. get a decal image (like a logo or some random thing) and see what it does.
-        let albedo = Texture::create(
+        let albedo = Texture::new(
             device,
             config.width,
             config.height,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - albedo"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
         );
 
-        let normal = Texture::create(
+        let normal = Texture::new(
             device,
             config.width,
             config.height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - normal (worldspace)"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
         );
 
-        let material = Texture::create(
+        let material = Texture::new(
             device,
             config.width,
             config.height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - material"),
-            Some(wgpu::TextureFormat::Rgba8Unorm),
         );
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

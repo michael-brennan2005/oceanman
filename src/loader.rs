@@ -1,11 +1,10 @@
 use glam::{vec3, Mat4, Quat, Vec3, Vec4};
 use gltf::{buffer::Data, image::Format};
 use mikktspace::generate_tangents;
-use serde::{Deserialize, Serialize};
 
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BufferUsages,
+    BufferUsages, TextureUsages,
 };
 
 use crate::{
@@ -25,10 +24,9 @@ pub struct Scene {
     pub lighting: LightingUniform,
 }
 
-// TODO: make message contain a String and get rid of this lifetime b.s
 #[derive(Debug)]
-pub enum SceneLoadError<'a> {
-    Message(&'a str),
+pub enum SceneLoadError {
+    Message(String),
 }
 
 impl Scene {
@@ -37,7 +35,7 @@ impl Scene {
         node: &gltf::Node,
         original_transform: Mat4,
         buffers: &Vec<Data>,
-    ) -> Result<Vec<Mesh>, SceneLoadError<'a>> {
+    ) -> Result<Vec<Mesh>, SceneLoadError> {
         let (translation, rotation, scale) = node.transform().decomposed();
 
         let rotation_fixed = [
@@ -69,20 +67,26 @@ impl Scene {
 
                 let indices = reader
                     .read_indices()
-                    .ok_or(SceneLoadError::Message("Couldn't load indices"))?
+                    .ok_or(SceneLoadError::Message(String::from(
+                        "Couldn't load indices",
+                    )))?
                     .into_u32()
                     .collect::<Vec<_>>();
                 let positions = reader
                     .read_positions()
-                    .ok_or(SceneLoadError::Message("Couldn't load positions"))?
+                    .ok_or(SceneLoadError::Message(String::from(
+                        "Couldn't load positions",
+                    )))?
                     .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
                 let normals = reader
                     .read_normals()
-                    .ok_or(SceneLoadError::Message("Couldn't load normals."))?
+                    .ok_or(SceneLoadError::Message(String::from(
+                        "Couldn't load normals.",
+                    )))?
                     .map(|pos| [pos[0], pos[1], pos[2] * -1.0]);
                 let uvs = reader
                     .read_tex_coords(0)
-                    .ok_or(SceneLoadError::Message("Couldn't load uvs."))?
+                    .ok_or(SceneLoadError::Message(String::from("Couldn't load uvs.")))?
                     .into_f32();
 
                 let tangents = reader.read_tangents();
@@ -120,7 +124,6 @@ impl Scene {
                     vertices = tangent_generator.vertices;
                 }
 
-                // TODO: proper labels
                 let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some(
                         format!("Vertex buffer for {}", mesh.name().unwrap_or("")).as_str(),
@@ -157,12 +160,9 @@ impl Scene {
 
     pub fn from_gltf<'a>(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
         queue: &wgpu::Queue,
         path: String,
-    ) -> Result<Self, SceneLoadError<'a>> {
-        // TODO: proper error handling everywhere
-        // TODO: proper labeling everywhere
+    ) -> Result<Self, SceneLoadError> {
         let (document, buffers, images) = gltf::import(path).unwrap();
 
         let scene = document.default_scene().unwrap();
@@ -195,7 +195,7 @@ impl Scene {
                 },
             };
 
-            let diffuse_texture = if let Some(texture_info) = pbr.base_color_texture() {
+            let albedo_texture = if let Some(texture_info) = pbr.base_color_texture() {
                 let image = &images[texture_info.texture().source().index()];
 
                 let mut data: Vec<u8> = Vec::new();
@@ -214,22 +214,24 @@ impl Scene {
                     _ => todo!(),
                 };
 
-                Texture::create_from_bytes(
+                Texture::new_from_bytes(
                     device,
                     queue,
                     slice,
                     image.width,
                     image.height,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
-                    None,
                 )
             } else {
-                Texture::create_1x1_texture(
+                Texture::new_1x1_texture(
                     device,
                     queue,
                     &[255, 255, 255, 255],
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
-                    None,
                 )
             };
 
@@ -252,22 +254,24 @@ impl Scene {
                     _ => todo!(),
                 };
 
-                Texture::create_from_bytes(
+                Texture::new_from_bytes(
                     device,
                     queue,
                     slice,
                     image.width,
                     image.height,
+                    wgpu::TextureFormat::Rgba8Unorm,
+                    TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
-                    Some(wgpu::TextureFormat::Rgba8Unorm),
                 )
             } else {
-                Texture::create_1x1_texture(
+                Texture::new_1x1_texture(
                     device,
                     queue,
                     &[128, 128, 255, 255],
+                    wgpu::TextureFormat::Rgba8Unorm,
+                    TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
-                    Some(wgpu::TextureFormat::Rgba8Unorm),
                 )
             };
 
@@ -291,12 +295,14 @@ impl Scene {
                         _ => todo!(),
                     };
 
-                    Texture::create_from_bytes(
+                    Texture::new_from_bytes(
                         device,
                         queue,
                         slice,
                         image.width,
                         image.height,
+                        wgpu::TextureFormat::Rgba8Unorm,
+                        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                         Some(
                             format!(
                                 "Metallic-roughness texture for {}",
@@ -304,13 +310,14 @@ impl Scene {
                             )
                             .as_str(),
                         ),
-                        Some(wgpu::TextureFormat::Rgba8Unorm),
                     )
                 } else {
-                    Texture::create_1x1_texture(
+                    Texture::new_1x1_texture(
                         device,
                         queue,
                         &[255, 128, 128, 255],
+                        wgpu::TextureFormat::Rgba8Unorm,
+                        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                         Some(
                             format!(
                                 "Metallic-roughness texture for {}",
@@ -318,13 +325,12 @@ impl Scene {
                             )
                             .as_str(),
                         ),
-                        Some(wgpu::TextureFormat::Rgba8Unorm),
                     )
                 };
             materials.push(Material::new(
                 device,
                 material_data,
-                diffuse_texture,
+                albedo_texture,
                 normal_texture,
                 metal_roughness_texture,
             ));
@@ -341,7 +347,6 @@ impl Scene {
             ),
             lighting: LightingUniform::new(
                 device,
-                config,
                 LightingUniformData::new(vec![
                     (vec3(-4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),
                     (vec3(4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),

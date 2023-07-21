@@ -1,8 +1,6 @@
-use std::{rc::Rc, sync::Arc};
-
 use wgpu::{
-    BindGroupEntry, BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor,
-    PrimitiveState, RenderPipeline, VertexState,
+    BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState,
+    VertexState,
 };
 
 use crate::{
@@ -18,7 +16,7 @@ pub struct WriteGBuffers {
 }
 
 impl WriteGBuffers {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+    pub fn new(device: &wgpu::Device) -> Self {
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../shaders/write_gbuffers.wgsl"));
 
@@ -44,7 +42,7 @@ impl WriteGBuffers {
                 entry_point: "fs_main",
                 targets: &[
                     Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
                         blend: Some(BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     }),

@@ -1,6 +1,5 @@
-use wgpu::TextureFormat;
+use wgpu::{TextureFormat, TextureUsages};
 
-// TODO: change all the create methods to be new, in line with rust idioms
 pub struct Texture {
     pub format: wgpu::TextureFormat,
     pub texture: wgpu::Texture,
@@ -10,17 +9,16 @@ pub struct Texture {
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-    /// If format is left as None, then the format of the texture will be Rgba8UnormSrgb (color textures).
-    pub fn create_from_bytes(
+    pub fn new_from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bytes: &[u8],
         width: u32,
         height: u32,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
         label: Option<&str>,
-        format: Option<wgpu::TextureFormat>,
     ) -> Self {
-        let format = format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
         let dimensions = (width, height);
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -34,10 +32,7 @@ impl Texture {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            // FIXME: putting all these usages can stop driver from doing optimizations, introduce more fined grain control.
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST,
+            usage,
             view_formats: &[],
         });
 
@@ -79,14 +74,14 @@ impl Texture {
         }
     }
 
-    pub fn create(
+    pub fn new(
         device: &wgpu::Device,
         width: u32,
         height: u32,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
         label: Option<&str>,
-        format: Option<wgpu::TextureFormat>,
     ) -> Self {
-        let format = format.unwrap_or(wgpu::TextureFormat::Rgba8UnormSrgb);
         let dimensions = (width, height);
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -100,11 +95,7 @@ impl Texture {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            // FIXME: putting all these usages can stop driver from doing optimizations, introduce more fined grain control.
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
+            usage,
             view_formats: &[],
         });
 
@@ -120,20 +111,18 @@ impl Texture {
         }
     }
 
-    pub fn create_1x1_texture(
+    pub fn new_1x1_texture(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         data: &[u8],
+        format: TextureFormat,
+        usage: TextureUsages,
         label: Option<&str>,
-        format: Option<TextureFormat>,
     ) -> Self {
-        Texture::create_from_bytes(device, queue, data, 1, 1, label, format)
+        Texture::new_from_bytes(device, queue, data, 1, 1, format, usage, label)
     }
 
-    pub fn create_depth_texture(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-    ) -> Self {
+    pub fn new_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Depth texture"),
             size: wgpu::Extent3d {
@@ -188,6 +177,7 @@ impl Sampler {
         Sampler::diffuse_texture_sampler(device)
     }
 
+    #[allow(dead_code)]
     pub fn shadow_map_sampler(device: &wgpu::Device) -> Self {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Shadow map sampler (PCF)"),

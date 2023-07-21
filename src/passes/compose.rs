@@ -1,16 +1,12 @@
-use std::rc::Rc;
-
 use wgpu::{
-    BindGroupEntry, BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor,
-    PrimitiveState, TextureView, VertexState,
+    FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, TextureView,
+    VertexState,
 };
 
 use crate::{
-    common::VertexAttributes,
     gbuffers::GBuffers,
     loader::Scene,
     resources::{LightingUniform, SceneUniform},
-    texture::Texture,
 };
 
 pub struct Compose {

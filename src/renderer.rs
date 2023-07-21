@@ -1,7 +1,14 @@
+use std::time::Duration;
+
+use wgpu::TextureUsages;
 use winit::{event::WindowEvent, window::Window};
 
 use crate::{
-    camera::Camera, gbuffers::GBuffers, loader::Scene, passes, resources::SceneUniformData,
+    camera::{Camera, CameraController, FlyingCamera},
+    gbuffers::GBuffers,
+    loader::Scene,
+    passes,
+    resources::SceneUniformData,
     texture::Texture,
 };
 
@@ -9,10 +16,10 @@ pub struct Renderer {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
 
     camera: Camera,
+    camera_controller: Box<dyn CameraController>,
+
     scene: Scene,
     gbuffers: GBuffers,
 
@@ -78,9 +85,9 @@ impl Renderer {
         surface.configure(&device, &config);
 
         let camera = Camera::default();
+        let camera_controller = Box::new(FlyingCamera::new());
         let scene = Scene::from_gltf(
             &device,
-            &config,
             &queue,
             "resources/glTF-Sample-Models/2.0/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
                 .to_string(),
@@ -88,24 +95,24 @@ impl Renderer {
         .unwrap();
 
         let gbuffers = GBuffers::new(&device, &config);
-        let compose_output = Texture::create(
+        let compose_output = Texture::new(
             &device,
             config.width,
             config.height,
+            wgpu::TextureFormat::Rgba16Float,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Compose output/Tonemapping input"),
-            Some(wgpu::TextureFormat::Rgba16Float),
         );
 
-        let write_gbuffers = passes::WriteGBuffers::new(&device, &config);
+        let write_gbuffers = passes::WriteGBuffers::new(&device);
         let compose = passes::Compose::new(&device);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
         Self {
             surface,
             device,
             queue,
-            config,
-            size,
             camera,
+            camera_controller,
             scene,
             gbuffers,
             compose_output,
@@ -116,11 +123,11 @@ impl Renderer {
     }
 
     pub fn input(&mut self, event: &WindowEvent) {
-        self.camera.input(event);
+        self.camera_controller.input(event);
     }
 
-    pub fn update(&mut self) {
-        self.camera.update();
+    pub fn update(&mut self, dt: Duration) {
+        self.camera_controller.update(&mut self.camera, dt);
         self.scene
             .scene
             .update(&self.queue, SceneUniformData::new_from_camera(&self.camera));
@@ -137,33 +144,6 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Command encoder"),
             });
-
-        //        {
-        //            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //                label: Some("Shadow pass"),
-        //                color_attachments: &[],
-        //                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-        //                    view: &self.scene.lighting.shadow_map.view,
-        //                    depth_ops: Some(wgpu::Operations {
-        //                        load: wgpu::LoadOp::Clear(1.0),
-        //                        store: true,
-        //                    }),
-        //                    stencil_ops: None,
-        //                }),
-        //            });
-        //
-        //            shadow_pass.set_pipeline(&self.shadow_pipeline);
-        //            shadow_pass.set_bind_group(0, &self.scene.scene.uniform_bind_group, &[]);
-        //
-        //            for mesh in &self.scene.meshes {
-        //                shadow_pass.set_bind_group(1, &mesh.bind_group, &[]);
-        //
-        //                shadow_pass
-        //                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        //                shadow_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-        //                shadow_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
-        //            }
-        //        }
 
         self.write_gbuffers
             .pass(&self.scene, &self.gbuffers, &mut encoder);

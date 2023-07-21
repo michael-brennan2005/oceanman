@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -11,6 +13,7 @@ mod loader;
 mod passes;
 mod renderer;
 mod resources;
+mod spring;
 mod tangent_generation;
 mod texture;
 
@@ -27,7 +30,7 @@ pub async fn run() {
         .unwrap();
 
     let mut app = Renderer::new(&window).await;
-
+    let mut last_render_time = Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -60,7 +63,10 @@ pub async fn run() {
             }
         }
         Event::RedrawRequested(window_id) if window_id == window.id() => {
-            app.update();
+            let now = Instant::now();
+            let dt = now - last_render_time;
+            last_render_time = now;
+            app.update(dt);
             match app.render() {
                 Ok(_) => {}
                 Err(e) => eprintln!("{:?}", e),

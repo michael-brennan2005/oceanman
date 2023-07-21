@@ -65,7 +65,6 @@ pub struct SceneUniform {
     pub uniform_bind_group: wgpu::BindGroup,
 }
 
-// TODO: write out the min_binding_sizes (avoid checks at draw call)
 impl SceneUniform {
     pub fn new(device: &wgpu::Device, zero: SceneUniformData, one: SceneUniformData) -> Self {
         let uniform_buffer_0 = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -106,7 +105,6 @@ impl SceneUniform {
         }
     }
 
-    // TODO: cover case in which we need to update shadow pass
     pub fn update(&self, queue: &wgpu::Queue, data: SceneUniformData) {
         queue.write_buffer(&self.uniform_buffer_0, 0, bytemuck::cast_slice(&[data]));
     }
@@ -178,15 +176,8 @@ pub struct LightingUniform {
     pub uniform_bind_group: wgpu::BindGroup,
 }
 
-// TODO: write out the min_binding_sizes (avoid checks at draw call)
-// Contains shadow map (since this is used only for scene pass and not shadow pass)
-// FIXME: seems like a bad idea to put shadowmap in here?
 impl LightingUniform {
-    pub fn new(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        data: LightingUniformData,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, data: LightingUniformData) -> Self {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Lighting uniform buffer"),
             contents: bytemuck::cast_slice(&[data]),
@@ -221,7 +212,9 @@ impl LightingUniform {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: None,
+                    min_binding_size: NonZeroU64::new(
+                        std::mem::size_of::<LightingUniformData>() as u64
+                    ),
                 },
                 count: None,
             }],
@@ -427,7 +420,6 @@ pub struct Mesh {
     pub material_index: usize,
 }
 
-// TODO: write out the min_binding_sizes (avoid checks at draw call)
 impl Mesh {
     pub fn new(
         device: &wgpu::Device,
@@ -478,7 +470,7 @@ impl Mesh {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: None,
+                    min_binding_size: NonZeroU64::new(std::mem::size_of::<MeshUniformData>() as u64),
                 },
                 count: None,
             }],

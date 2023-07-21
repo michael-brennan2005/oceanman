@@ -1,6 +1,4 @@
-use std::{cell::Cell, rc::Rc};
-
-use mikktspace::{generate_tangents, Geometry};
+use mikktspace::Geometry;
 
 use crate::common::VertexAttributes;
 

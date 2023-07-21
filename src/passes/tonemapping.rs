@@ -3,7 +3,7 @@ use wgpu::{
     VertexState,
 };
 
-use crate::{resources::SceneUniform, texture::Texture};
+use crate::texture::Texture;
 
 pub struct Tonemapping {
     pipeline: wgpu::RenderPipeline,

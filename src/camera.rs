@@ -1,9 +1,10 @@
+use std::time::Duration;
+
 use glam::{vec3, vec4, Mat4, Vec3, Vec4};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 
-// TODO: better camera omg
-// TODO: holy shit there has to be a better way this is too many variables
-// TODO: this code is pretty much a straight - port of what was from zig + shoehorning in to fit how winit works. better, more rust-y way?
+use crate::spring::Spring;
+
 pub struct Camera {
     eye: Vec3,
     front: Vec3,
@@ -12,17 +13,6 @@ pub struct Camera {
     fovy: f32,
     znear: f32,
     zfar: f32,
-    speed: f32,
-    is_forward_pressed: bool,
-    is_backward_pressed: bool,
-    is_left_pressed: bool,
-    is_right_pressed: bool,
-    is_up_pressed: bool,
-    is_down_pressed: bool,
-    right_click: bool,
-    first_mouse: bool,
-    last_x: f32,
-    last_y: f32,
     pub pitch: f32,
     pub yaw: f32,
 }
@@ -37,17 +27,6 @@ impl Default for Camera {
             fovy: 45.0_f32.to_radians(),
             znear: 0.01,
             zfar: 100.0,
-            speed: 0.04,
-            is_forward_pressed: false,
-            is_backward_pressed: false,
-            is_left_pressed: false,
-            is_right_pressed: false,
-            is_up_pressed: false,
-            is_down_pressed: false,
-            right_click: false,
-            last_x: 0.0,
-            last_y: 0.0,
-            first_mouse: true,
             pitch: 0.0,
             yaw: 90.0,
         }
@@ -63,8 +42,49 @@ impl Camera {
             vec4(self.eye.x, self.eye.y, self.eye.z, 1.0),
         )
     }
+}
 
-    pub fn input(&mut self, event: &WindowEvent) {
+pub trait CameraController {
+    fn input(&mut self, event: &WindowEvent);
+    fn update(&mut self, camera: &mut Camera, dt: Duration);
+}
+
+pub struct FlyingCamera {
+    direction: Vec3,
+    x_spring: Spring<f32>,
+    y_spring: Spring<f32>,
+    z_spring: Spring<f32>,
+    max_speed: f32,
+
+    right_click: bool,
+    first_mouse: bool,
+    last_x: f32,
+    last_y: f32,
+    pub pitch: f32,
+    pub yaw: f32,
+}
+
+impl FlyingCamera {
+    pub fn new() -> Self {
+        FlyingCamera {
+            direction: vec3(0.0, 0.0, 1.0),
+            x_spring: Spring::new(5.0, 5.0, 0.0),
+            y_spring: Spring::new(5.0, 5.0, 0.0),
+            z_spring: Spring::new(5.0, 5.0, 0.0),
+
+            max_speed: 10.0,
+
+            right_click: false,
+            first_mouse: false,
+            last_x: 0.0,
+            last_y: 0.0,
+            pitch: 0.0,
+            yaw: 90.0,
+        }
+    }
+}
+impl CameraController for FlyingCamera {
+    fn input(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::KeyboardInput {
                 input:
@@ -78,31 +98,31 @@ impl Camera {
                 let is_pressed = *state == ElementState::Pressed;
                 match keycode {
                     VirtualKeyCode::W | VirtualKeyCode::Up => {
-                        self.is_forward_pressed = is_pressed;
+                        self.z_spring.goal = if is_pressed { 1.0 } else { 0.0 };
                     }
                     VirtualKeyCode::A | VirtualKeyCode::Left => {
-                        self.is_left_pressed = is_pressed;
+                        self.x_spring.goal = if is_pressed { -1.0 } else { 0.0 };
                     }
                     VirtualKeyCode::S | VirtualKeyCode::Down => {
-                        self.is_backward_pressed = is_pressed;
+                        self.z_spring.goal = if is_pressed { -1.0 } else { 0.0 };
                     }
                     VirtualKeyCode::D | VirtualKeyCode::Right => {
-                        self.is_right_pressed = is_pressed;
+                        self.x_spring.goal = if is_pressed { 1.0 } else { 0.0 };
                     }
                     VirtualKeyCode::E => {
-                        self.is_up_pressed = is_pressed;
+                        self.y_spring.goal = if is_pressed { 1.0 } else { 0.0 };
                     }
                     VirtualKeyCode::Q => {
-                        self.is_down_pressed = is_pressed;
+                        self.y_spring.goal = if is_pressed { -1.0 } else { 0.0 };
                     }
                     _ => {}
                 }
             }
             WindowEvent::MouseInput {
-                device_id,
+                device_id: _,
                 state,
                 button: MouseButton::Right,
-                modifiers,
+                modifiers: _,
             } => {
                 if *state == ElementState::Pressed {
                     self.right_click = true;
@@ -111,9 +131,9 @@ impl Camera {
                 }
             }
             WindowEvent::CursorMoved {
-                device_id,
+                device_id: _,
                 position,
-                modifiers,
+                modifiers: _,
             } => {
                 if !self.right_click {
                     self.first_mouse = true;
@@ -138,43 +158,30 @@ impl Camera {
                 self.pitch -= y_offset;
 
                 self.pitch = self.pitch.clamp(-89.0, 89.0);
-                let direction = vec3(
+                self.direction = vec3(
                     f32::cos(self.yaw.to_radians()) * f32::cos(self.pitch.to_radians()),
                     f32::sin(self.pitch.to_radians()),
                     f32::sin(self.yaw.to_radians()) * f32::cos(self.pitch.to_radians()),
                 );
-
-                self.front = Vec3::normalize(direction);
             }
             _ => {}
         }
     }
 
-    pub fn update(&mut self) {
-        if self.is_forward_pressed {
-            self.eye += self.front * self.speed;
-        }
+    fn update(&mut self, camera: &mut Camera, dt: Duration) {
+        let dt_seconds = dt.as_secs_f32();
+        camera.front = self.direction;
 
-        if self.is_backward_pressed {
-            self.eye -= self.front * self.speed;
-        }
+        camera.eye += camera.front * self.z_spring.update(dt_seconds) * self.max_speed * dt_seconds;
+        camera.eye += Vec3::normalize(Vec3::cross(camera.up, camera.front))
+            * self.x_spring.update(dt_seconds)
+            * self.max_speed
+            * dt_seconds;
 
-        if self.is_left_pressed {
-            self.eye -= Vec3::normalize(Vec3::cross(self.up, self.front)) * self.speed;
-        }
-
-        if self.is_right_pressed {
-            self.eye += Vec3::normalize(Vec3::cross(self.up, self.front)) * self.speed;
-        }
-
-        if self.is_up_pressed {
-            let right = Vec3::normalize(Vec3::cross(self.up, self.front));
-            self.eye -= Vec3::normalize(Vec3::cross(right, self.front)) * self.speed;
-        }
-
-        if self.is_down_pressed {
-            let right = Vec3::normalize(Vec3::cross(self.up, self.front));
-            self.eye += Vec3::normalize(Vec3::cross(right, self.front)) * self.speed;
-        }
+        let right = Vec3::normalize(Vec3::cross(camera.up, camera.front));
+        camera.eye += Vec3::normalize(Vec3::cross(camera.front, right))
+            * self.y_spring.update(dt_seconds)
+            * self.max_speed
+            * dt_seconds;
     }
 }
