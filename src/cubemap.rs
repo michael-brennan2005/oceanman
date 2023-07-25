@@ -5,9 +5,9 @@ use wgpu::{
     include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
     BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BufferBindingType, BufferDescriptor, BufferUsages, Color, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipelineDescriptor, ShaderStages,
-    TextureUsages, TextureView, VertexState,
+    BufferBindingType, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
+    FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPipelineDescriptor, ShaderStages, TextureUsages, TextureView, VertexState,
 };
 
 use crate::texture::{Sampler, Texture};
@@ -30,10 +30,9 @@ impl Cubemap {
     pub fn from_equirectangular<P: AsRef<Path>>(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
         path: P,
     ) -> Self {
-        let img = image::open(path).unwrap().into_rgba32f();
+        let img = image::open(path).unwrap().into_rgba16();
         let width = img.width();
         let height = img.height();
 
@@ -162,6 +161,7 @@ impl Cubemap {
             vec
         };
 
+        let encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let shader = device.create_shader_module(include_wgsl!("shaders/cubemap/e2c.wgsl"));
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -223,6 +223,8 @@ impl Cubemap {
             pass.set_bind_group(1, &transform_bind_groups[i], &[]);
             pass.draw(0..36, 0..1);
         }
+
+        queue.submit(std::iter::once(encoder.finish()));
 
         Cubemap {}
     }
