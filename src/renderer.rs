@@ -85,8 +85,6 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        let cubemap = Cubemap::from_equirectangular(&device, &queue, "resources/envmap.hdr");
-
         let camera = Camera::default();
         let camera_controller = Box::new(FlyingCamera::new());
         let scene = Scene::from_gltf(
@@ -146,6 +144,13 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Command encoder"),
             });
+
+        let cubemap = Cubemap::from_equirectangular(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            "resources/envmap.hdr",
+        );
 
         self.write_gbuffers
             .pass(&self.scene, &self.gbuffers, &mut encoder);

@@ -44,6 +44,7 @@ impl Texture {
         let bytes_per_pixel = match format {
             wgpu::TextureFormat::Rgba8UnormSrgb => 4,
             wgpu::TextureFormat::Rgba8Unorm => 4,
+            wgpu::TextureFormat::Rgba16Float => 8,
             wgpu::TextureFormat::Rgba32Float => 16,
             _ => panic!("Unsupported format: {:?}", format),
         };

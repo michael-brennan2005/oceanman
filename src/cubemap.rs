@@ -30,9 +30,9 @@ impl Cubemap {
     pub fn from_equirectangular<P: AsRef<Path>>(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
         path: P,
     ) -> Self {
-        // TODO: do this cubemap stuff in rgba16float, 32bit is overkill
         let img = image::open(path).unwrap().into_rgba32f();
         let width = img.width();
         let height = img.height();
@@ -47,52 +47,35 @@ impl Cubemap {
             TextureUsages::all(),
             Some("Equirectangular HDR cubemap"),
         );
-        let equirectangular_texture_sampler = Sampler::equirectangular_sampler(device);
 
         let eqr_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("eqr bind group layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    multisampled: false,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
                 },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         });
 
         let eqr_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("eqr bind group"),
             layout: &eqr_bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&equirectangular_texture.view),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(
-                        &equirectangular_texture_sampler.sampler,
-                    ),
-                },
-            ],
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&equirectangular_texture.view),
+            }],
         });
 
         let transform_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("transform bind group layout"),
                 entries: &[BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 0,
                     visibility: ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
@@ -170,7 +153,7 @@ impl Cubemap {
                     device,
                     1024,
                     1024,
-                    wgpu::TextureFormat::Rgba32Float,
+                    wgpu::TextureFormat::Rgba16Float,
                     wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
                     Some(format!("Cubemap texture - {} side", faces[i]).as_str()),
                 ));
@@ -178,10 +161,6 @@ impl Cubemap {
 
             vec
         };
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("E2C encoder "),
-        });
 
         let shader = device.create_shader_module(include_wgsl!("shaders/cubemap/e2c.wgsl"));
 
@@ -201,7 +180,7 @@ impl Cubemap {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba32Float,
+                    format: wgpu::TextureFormat::Rgba16Float,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -239,12 +218,12 @@ impl Cubemap {
                 depth_stencil_attachment: None,
             });
 
+            pass.set_pipeline(&pipeline);
             pass.set_bind_group(0, &eqr_bind_group, &[]);
             pass.set_bind_group(1, &transform_bind_groups[i], &[]);
-            pass.draw(0..6, 0..1);
+            pass.draw(0..36, 0..1);
         }
 
-        queue.submit(std::iter::once(encoder.finish()));
         Cubemap {}
     }
 }
