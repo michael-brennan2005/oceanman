@@ -8,6 +8,7 @@ use crate::{
     texture::{Sampler, Texture},
 };
 
+#[macro_use]
 macro_rules! bytemuck_impl {
     ($struct_name:ident) => {
         unsafe impl bytemuck::Pod for $struct_name {}

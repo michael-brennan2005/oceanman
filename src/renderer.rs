@@ -5,6 +5,7 @@ use winit::{event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, FlyingCamera},
+    cubemap::Cubemap,
     gbuffers::GBuffers,
     loader::Scene,
     passes,
@@ -84,13 +85,14 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
+        let cubemap = Cubemap::from_equirectangular(&device, &queue, "resources/envmap.hdr");
+
         let camera = Camera::default();
         let camera_controller = Box::new(FlyingCamera::new());
         let scene = Scene::from_gltf(
             &device,
             &queue,
-            "resources/glTF-Sample-Models/2.0/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
-                .to_string(),
+            "resources/glTF-Sample-Models/2.0/BoxTextured/glTF/BoxTextured.gltf".to_string(),
         )
         .unwrap();
 

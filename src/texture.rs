@@ -44,6 +44,7 @@ impl Texture {
         let bytes_per_pixel = match format {
             wgpu::TextureFormat::Rgba8UnormSrgb => 4,
             wgpu::TextureFormat::Rgba8Unorm => 4,
+            wgpu::TextureFormat::Rgba32Float => 16,
             _ => panic!("Unsupported format: {:?}", format),
         };
 
@@ -101,6 +102,7 @@ impl Texture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label,
+            format: Some(format),
             ..Default::default()
         });
 
@@ -190,6 +192,25 @@ impl Sampler {
             compare: Some(wgpu::CompareFunction::Less),
             lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        Self { sampler }
+    }
+
+    pub fn equirectangular_sampler(device: &wgpu::Device) -> Self {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Equirectangular texture sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
+            compare: None,
             anisotropy_clamp: 1,
             border_color: None,
         });

@@ -8,6 +8,7 @@ use winit::{
 
 mod camera;
 mod common;
+mod cubemap;
 mod gbuffers;
 mod loader;
 mod passes;
