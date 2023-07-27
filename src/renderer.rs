@@ -5,7 +5,6 @@ use winit::{event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, FlyingCamera},
-    cubemap::Cubemap,
     gbuffers::GBuffers,
     loader::Scene,
     passes,
@@ -91,7 +90,7 @@ impl Renderer {
         let scene = Scene::from_gltf(
             &device,
             &queue,
-            "resources/glTF-Sample-Models/2.0/BoxTextured/glTF/BoxTextured.gltf".to_string(),
+            "resources/glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf".to_string(),
         )
         .unwrap();
 
@@ -106,7 +105,7 @@ impl Renderer {
         );
 
         let write_gbuffers = passes::WriteGBuffers::new(&device);
-        let compose = passes::Compose::new(&device);
+        let compose = passes::Compose::new(&device, &queue);
         let skybox = passes::Skybox::new(&device, &queue);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
 

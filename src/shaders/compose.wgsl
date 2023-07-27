@@ -20,6 +20,11 @@ struct LightingUniforms {
 
 @group(2) @binding(0) var<uniform> lighting: LightingUniforms;
 
+@group(3) @binding(0) var brdf_lut: texture_2d<f32>;
+@group(3) @binding(1) var diffuse_irradiance: texture_cube<f32>;
+@group(3) @binding(2) var specular_prefilter: texture_cube<f32>;
+@group(3) @binding(3) var ibl_s: sampler;
+
 fn screen_to_world_coord(coord: vec2<f32>, depth_sample: f32) -> vec3<f32> {
 	let pos_clip = vec4<f32>(coord.x * 2.0 - 1.0, (1.0 - coord.y) * 2.0 - 1.0, depth_sample, 1.0);
 	let pos_world_w = scene.inverse_perspective_view * pos_clip;
@@ -71,7 +76,11 @@ fn smith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, k: f32) -> f32 {
 }
 
 fn schlick_fresnel(cosTheta: f32, f0: vec3<f32>) -> vec3<f32> {
-	return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+	return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+fn schlick_fresnel_roughness(cosTheta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
+	return f0 + (max(vec3<f32>(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 // thank you learnopengl - PBR!!!!
@@ -83,9 +92,6 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		0 
 	);
 
-	if (depth == 1.0) {
-		return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-	} 
 	
 	let albedo = textureLoad(
 		albedo_gb,
@@ -114,6 +120,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 
 	let v = normalize(scene.camera_pos.xyz - position);
 	let n = normal;
+	let r = reflect(-v, n);
+	
 	var f0 = vec3<f32>(0.04, 0.04, 0.04);
 	f0 = mix(f0, albedo, metalness);
 	
@@ -142,9 +150,26 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		let nDotL = max(dot(n, l), 0.0);
 		l0 += (kD * albedo / 3.14159 + specular) * radiance * nDotL;
 	}
+	
+	let f = schlick_fresnel_roughness(max(dot(n, v), 0.0), f0, roughness);
+	let kS = f;
+	var kD = 1.0 - kS;
+	kD *= 1.0 - metalness;
 
-	let ambient = vec3(0.03) * albedo;
+	let irradiance = textureSample(diffuse_irradiance, ibl_s, n).rgb;
+	let diffuse = irradiance * albedo;
+
+	let prefiltered_color = textureSampleLevel(specular_prefilter, ibl_s, r, roughness * 9.0).rgb;
+	let brdf = textureSample(brdf_lut, ibl_s, vec2<f32>(max(dot(n, v), 0.0), roughness)).rg;
+	let specular = prefiltered_color * (f * brdf.x + brdf.y);
+	
+	let ambient = (kD * diffuse + specular);
+	
 	let color = ambient + l0;
+	
+	if (depth == 1.0) {
+		return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+	} 
 	
 	return vec4<f32>(color,1.0);
 }

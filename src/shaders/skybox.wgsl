@@ -76,7 +76,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 		0.0,
 		0.0,
 		0.0,
-		0.0
+		1.0
 	);	
 	out.local_position = cube[in.index];
 	out.clip_space_position = (scene.perspective * rotationView * vec4<f32>(cube[in.index], 1.0)).xyww;	
