@@ -35,12 +35,8 @@ impl Default for Camera {
 
 impl Camera {
     pub fn build_uniforms(&self) -> (Mat4, Vec4) {
-        let perspective_view = Mat4::perspective_lh(self.fovy, self.aspect, self.znear, self.zfar)
-            * Mat4::look_to_lh(self.eye, self.front, self.up);
-        (
-            perspective_view,
-            vec4(self.eye.x, self.eye.y, self.eye.z, 1.0),
-        )
+        let view = Mat4::look_to_lh(self.eye, self.front, self.up);
+        (view, vec4(self.eye.x, self.eye.y, self.eye.z, 1.0))
     }
 }
 

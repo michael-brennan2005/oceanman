@@ -200,9 +200,9 @@ impl Sampler {
         Self { sampler }
     }
 
-    pub fn equirectangular_sampler(device: &wgpu::Device) -> Self {
+    pub fn cubemap_sampler(device: &wgpu::Device) -> Self {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Equirectangular texture sampler"),
+            label: Some("Cubemap texture sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
             address_mode_w: wgpu::AddressMode::Repeat,

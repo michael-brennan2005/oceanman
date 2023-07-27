@@ -28,6 +28,7 @@ pub struct Renderer {
 
     write_gbuffers: passes::WriteGBuffers,
     compose: passes::Compose,
+    skybox: passes::Skybox,
     tonemapping: passes::Tonemapping,
 }
 
@@ -106,7 +107,9 @@ impl Renderer {
 
         let write_gbuffers = passes::WriteGBuffers::new(&device);
         let compose = passes::Compose::new(&device);
+        let skybox = passes::Skybox::new(&device, &queue);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
+
         Self {
             surface,
             device,
@@ -118,6 +121,7 @@ impl Renderer {
             compose_output,
             write_gbuffers,
             compose,
+            skybox,
             tonemapping,
         }
     }
@@ -145,13 +149,6 @@ impl Renderer {
                 label: Some("Command encoder"),
             });
 
-        let cubemap = Cubemap::from_equirectangular(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            "resources/envmap.hdr",
-        );
-
         self.write_gbuffers
             .pass(&self.scene, &self.gbuffers, &mut encoder);
         self.compose.pass(
@@ -160,7 +157,12 @@ impl Renderer {
             &self.compose_output.view,
             &mut encoder,
         );
-
+        self.skybox.pass(
+            &self.scene,
+            &self.compose_output.view,
+            &self.gbuffers.depth.view,
+            &mut encoder,
+        );
         self.tonemapping.pass(&view, &mut encoder);
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();

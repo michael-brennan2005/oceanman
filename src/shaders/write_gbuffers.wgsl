@@ -1,5 +1,6 @@
 struct SceneUniforms {
-	perspective_view: mat4x4<f32>,
+	perspective: mat4x4<f32>,
+    view: mat4x4<f32>,
     inverse_perspective_view: mat4x4<f32>,
 	camera_pos: vec4<f32>
 }
@@ -46,7 +47,7 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_space_position = scene.perspective_view * mesh.model * vec4<f32>(in.position, 1.0);
+    out.clip_space_position = scene.perspective * scene.view * mesh.model * vec4<f32>(in.position, 1.0);
     out.world_position = (mesh.model * vec4<f32>(in.position, 1.0)).xyz;
     out.normal = (mesh.model * vec4<f32>(in.normal, 0.0)).xyz;    
     out.uv = in.uv;

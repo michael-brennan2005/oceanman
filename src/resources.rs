@@ -19,7 +19,8 @@ macro_rules! bytemuck_impl {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SceneUniformData {
-    pub perspective_view: Mat4,
+    pub perspective: Mat4,
+    pub view: Mat4,
     pub inverse_perspective_view: Mat4,
     pub camera_position: Vec4,
 }
@@ -28,17 +29,20 @@ bytemuck_impl!(SceneUniformData);
 impl SceneUniformData {
     pub fn new() -> Self {
         Self {
-            perspective_view: Mat4::IDENTITY,
+            perspective: Mat4::IDENTITY,
+            view: Mat4::IDENTITY,
             inverse_perspective_view: Mat4::IDENTITY.inverse(),
             camera_position: vec4(0.0, 0.0, 0.0, 1.0),
         }
     }
 
     pub fn new_from_camera(camera: &Camera) -> Self {
-        let (perspective_view, camera_position) = camera.build_uniforms();
+        let perspective = Mat4::perspective_lh(45.0_f32.to_radians(), 1600.0 / 900.0, 0.01, 100.0);
+        let (view, camera_position) = camera.build_uniforms();
         Self {
-            perspective_view,
-            inverse_perspective_view: perspective_view.inverse(),
+            perspective,
+            view,
+            inverse_perspective_view: (perspective * view).inverse(),
             camera_position,
         }
     }
@@ -49,8 +53,10 @@ impl SceneUniformData {
         let perspective_view = Mat4::orthographic_lh(-ops.x, ops.x, -ops.y, ops.y, -ops.z, ops.z)
             * Mat4::look_to_lh(vec3(0.0, 0.0, 0.0), lighting_direction, vec3(0.0, 1.0, 0.0));
 
+        // FIXME: super broken
         Self {
-            perspective_view,
+            perspective: perspective_view,
+            view: perspective_view,
             inverse_perspective_view: perspective_view.inverse(),
             camera_position: vec4(0.0, 0.0, 0.0, 1.0),
         }

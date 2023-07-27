@@ -1,231 +1,111 @@
-use std::{num::NonZeroU32, path::Path, rc::Rc};
+use std::{arch::x86_64::_XCR_XFEATURE_ENABLED_MASK, io::Read, path::Path};
 
-use glam::{vec3, Mat4};
+use ddsfile::{Caps, Caps2, D3DFormat, PixelFormat};
+use half::f16;
 use wgpu::{
-    include_wgsl,
-    util::{BufferInitDescriptor, DeviceExt},
-    BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BufferBindingType, BufferDescriptor, BufferUsages, Color, CommandEncoderDescriptor,
-    FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPipelineDescriptor, ShaderStages, TextureUsages, TextureView, VertexState,
+    Extent3d, ImageCopyTexture, TextureDescriptor, TextureUsages, TextureViewDescriptor,
+    TextureViewDimension,
 };
 
-use crate::texture::{Sampler, Texture};
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct Mat4Wrapped {
-    x: Mat4,
-}
-unsafe impl bytemuck::Pod for Mat4Wrapped {}
-unsafe impl bytemuck::Zeroable for Mat4Wrapped {}
-
+// TODO: this struct is identical to texture, do we wanna just have one texture type?
 pub struct Cubemap {
-    //    textures: [wgpu::Texture; 6], // [+X, -X, +Y, -Y, +Z, -Z]
-    //    texture_view: wgpu::TextureView,
-    //    texture_sampler: wgpu::BindGroup,
+    pub format: wgpu::TextureFormat,
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
 }
 
 impl Cubemap {
-    pub fn from_equirectangular<P: AsRef<Path>>(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        path: P,
-    ) -> Self {
-        let img = image::open(path).unwrap().into_rgba16();
-        let width = img.width();
-        let height = img.height();
+    pub fn from_dds<P: AsRef<Path>>(device: &wgpu::Device, queue: &wgpu::Queue, path: P) -> Self {
+        let file = std::fs::read(path).unwrap();
+        let img = ddsfile::Dds::read(file.as_slice()).unwrap();
 
-        let equirectangular_texture = Texture::new_from_bytes(
-            device,
-            queue,
-            bytemuck::cast_slice(img.into_vec().as_slice()),
-            width,
-            height,
-            wgpu::TextureFormat::Rgba32Float,
-            TextureUsages::all(),
-            Some("Equirectangular HDR cubemap"),
-        );
-
-        let eqr_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("eqr bind group layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    multisampled: false,
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                },
-                count: None,
-            }],
-        });
-
-        let eqr_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("eqr bind group"),
-            layout: &eqr_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&equirectangular_texture.view),
-            }],
-        });
-
-        let transform_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("transform bind group layout"),
-                entries: &[BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let transform_bind_groups = {
-            let mut vec: Vec<BindGroup> = Vec::new();
-            let mut views = vec![
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(1.0, 0.0, 0.0),
-                    vec3(0.0, -1.0, 0.0),
-                ),
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(-1.0, 0.0, 0.0),
-                    vec3(0.0, -1.0, 0.0),
-                ),
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(0.0, 1.0, 0.0),
-                    vec3(0.0, 0.0, 1.0),
-                ),
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(0.0, -1.0, 0.0),
-                    vec3(0.0, 0.0, -1.0),
-                ),
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(0.0, 0.0, 1.0),
-                    vec3(0.0, -1.0, 0.0),
-                ),
-                Mat4::look_at_lh(
-                    vec3(0.0, 0.0, 0.0),
-                    vec3(0.0, 0.0, -1.0),
-                    vec3(0.0, -1.0, 0.0),
-                ),
-            ];
-            let perspective = Mat4::perspective_lh(90.0_f32.to_radians(), 1.0, 0.1, 10.0);
-
-            for i in 0..6 {
-                let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: bytemuck::cast_slice(&[Mat4Wrapped {
-                        x: perspective * views[i],
-                    }]),
-                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-                });
-
-                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: None,
-                    layout: &transform_bind_group_layout,
-                    entries: &[BindGroupEntry {
-                        binding: 0,
-                        resource: buffer.as_entire_binding(),
-                    }],
-                });
-                vec.push(bind_group);
-            }
-            vec
-        };
-
-        let cube_textures = {
-            let mut vec: Vec<Texture> = Vec::new();
-
-            for i in 0..6 {
-                let faces = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"];
-                vec.push(Texture::new(
-                    device,
-                    1024,
-                    1024,
-                    wgpu::TextureFormat::Rgba16Float,
-                    wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    Some(format!("Cubemap texture - {} side", faces[i]).as_str()),
-                ));
-            }
-
-            vec
-        };
-
-        let encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
-        let shader = device.create_shader_module(include_wgsl!("shaders/cubemap/e2c.wgsl"));
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: None,
-                bind_group_layouts: &[&eqr_bind_group_layout, &transform_bind_group_layout],
-                push_constant_ranges: &[],
-            })),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba16Float,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-
-            multiview: None,
-        });
-
-        for i in 0..6 {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Cubemap pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &cube_textures[i].view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(Color::BLACK),
-                        store: true,
-                    },
-                })],
-                depth_stencil_attachment: None,
-            });
-
-            pass.set_pipeline(&pipeline);
-            pass.set_bind_group(0, &eqr_bind_group, &[]);
-            pass.set_bind_group(1, &transform_bind_groups[i], &[]);
-            pass.draw(0..36, 0..1);
+        if img.get_d3d_format().unwrap() != D3DFormat::A32B32G32R32F {
+            panic!("Format is: {:?}", img.get_d3d_format());
         }
 
-        queue.submit(std::iter::once(encoder.finish()));
+        if !img.header.caps2.contains(Caps2::CUBEMAP) {
+            panic!("DDS needs cubemap");
+        }
 
-        Cubemap {}
+        let (width, height) = (img.get_width(), img.get_height());
+
+        let texture = device.create_texture(&TextureDescriptor {
+            label: Some("Cubemap texture"),
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 6,
+            },
+            mip_level_count: img.get_num_mipmap_levels(),
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: TextureUsages::COPY_DST | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let view = texture.create_view(&TextureViewDescriptor {
+            format: Some(wgpu::TextureFormat::Rgba16Float),
+            dimension: Some(TextureViewDimension::Cube),
+            ..Default::default()
+        });
+
+        let vec_16f = {
+            let mut vec: Vec<f16> = vec![];
+
+            for i in 0..(img.data.len() / 4) {
+                let elem_f32 = f32::from_le_bytes([
+                    img.data[i * 4],
+                    img.data[i * 4 + 1],
+                    img.data[i * 4 + 2],
+                    img.data[i * 4 + 3],
+                ]);
+
+                vec.push(f16::from_f32(elem_f32));
+            }
+
+            vec
+        };
+
+        let mut offset = 0;
+        for face in 0..6 {
+            for mip_map_lvl in 0..img.get_num_mipmap_levels() {
+                let width_adjusted = width / (2_u32.pow(mip_map_lvl));
+                let height_adjusted = height / (2_u32.pow(mip_map_lvl));
+                let slice = &vec_16f.as_slice()
+                    [offset..(offset + (4 * width_adjusted * height_adjusted) as usize)];
+
+                queue.write_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &texture,
+                        mip_level: mip_map_lvl,
+                        origin: wgpu::Origin3d {
+                            x: 0,
+                            y: 0,
+                            z: face,
+                        },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    bytemuck::cast_slice(slice),
+                    wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(8 * width_adjusted),
+                        rows_per_image: Some(height_adjusted),
+                    },
+                    wgpu::Extent3d {
+                        width: width_adjusted,
+                        height: height_adjusted,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                offset += (4 * width_adjusted * height_adjusted) as usize;
+            }
+        }
+
+        Cubemap {
+            texture,
+            view,
+            format: wgpu::TextureFormat::Rgba16Float,
+        }
     }
 }

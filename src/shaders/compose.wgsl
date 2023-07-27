@@ -1,5 +1,6 @@
 struct SceneUniforms {
-	perspective_view: mat4x4<f32>,
+	perspective: mat4x4<f32>,
+    view: mat4x4<f32>,
 	inverse_perspective_view: mat4x4<f32>,
 	camera_pos: vec4<f32>
 }
