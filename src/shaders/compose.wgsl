@@ -46,37 +46,43 @@ fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
 	return vec4<f32>(vertex_positions[index], 0.0, 1.0);
 }
 
-fn distribution_ggx(n: vec3<f32>, h: vec3<f32>, a: f32) -> f32 {
+const PI = 3.1415926535;
+
+fn distribution_ggx(n: vec3<f32>, h: vec3<f32>, roughness: f32) -> f32 {
+	let a = roughness * roughness;
 	let a2 = a * a;
 	let nDotH = max(dot(n, h), 0.0);
 	let nDotH2 = nDotH * nDotH;
 
 	let nom = a2;
 	var denom = (nDotH2 * (a2 - 1.0) + 1.0);
-	denom = 3.14159 * denom * denom;
+	denom = PI * denom * denom;
 
 	return nom / denom;
 }
 
-fn schlick_ggx(nDotV: f32, k: f32) -> f32 {
+fn schlick_ggx(nDotV: f32, roughness: f32) -> f32 {
+	let r = roughness + 1.0;
+	let k = (r * r) / 8.0;
+	
 	let nom = nDotV;
 	let denom = nDotV * (1.0 - k) + k;
 
 	return nom / denom;
 }
 
-fn smith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, k: f32) -> f32 {
+fn smith(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, roughness: f32) -> f32 {
 	let nDotV = max(dot(n, v), 0.0);
 	let nDotL = max(dot(n, l), 0.0);
 
-	let ggx1 = schlick_ggx(nDotV, k);
-	let ggx2 = schlick_ggx(nDotL, k);
+	let ggx1 = schlick_ggx(nDotV, roughness);
+	let ggx2 = schlick_ggx(nDotL, roughness);
 
 	return ggx1 * ggx2;
 }
 
 fn schlick_fresnel(cosTheta: f32, f0: vec3<f32>) -> vec3<f32> {
-	return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+	return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - cosTheta, 5.0);
 }
 
 fn schlick_fresnel_roughness(cosTheta: f32, f0: vec3<f32>, roughness: f32) -> vec3<f32> {
@@ -120,7 +126,6 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 
 	let v = normalize(scene.camera_pos.xyz - position);
 	let n = normal;
-	let r = reflect(-v, n);
 	
 	var f0 = vec3<f32>(0.04, 0.04, 0.04);
 	f0 = mix(f0, albedo, metalness);
@@ -139,29 +144,31 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		let g = smith(n, v, l, roughness);
 		let f = schlick_fresnel(max(dot(h, v), 0.0), f0);
 
-		let kS = f;
-		var kD = vec3<f32>(1.0, 1.0, 1.0) - kS;
-		kD *= 1.0 - metalness;
-
-		let numerator = ndf * g * f;
-		let denominator = 4.0 * max(dot(n, v), 0.0) * max(dot(n, l), 0.0) + 0.0001;
-		let specular = numerator / denominator;
-
+		var kD = (vec3<f32>(1.0) - f) * (1.0 - metalness);
 		let nDotL = max(dot(n, l), 0.0);
-		l0 += (kD * albedo / 3.14159 + specular) * radiance * nDotL;
+		
+		let numerator = ndf * g * f;
+		let denominator = max(4.0 * max(dot(n, v), 0.0) * nDotL, 0.0001);
+		let specular = numerator / vec3<f32>(denominator);
+		
+		let Fd = albedo / PI;
+		
+		l0 += (kD * Fd + specular) * radiance * nDotL;
 	}
 	
-	let f = schlick_fresnel_roughness(max(dot(n, v), 0.0), f0, roughness);
-	let kS = f;
-	var kD = 1.0 - kS;
-	kD *= 1.0 - metalness;
+	let nDotV = max(dot(n, v), 0.0);
+	let r = reflect(-v, n);
+	
+	let kS = schlick_fresnel_roughness(max(dot(n, v), 0.0), f0, roughness);
+	let kD = (1.0 - kS) * (1.0 - metalness);
 
 	let irradiance = textureSample(diffuse_irradiance, ibl_s, n).rgb;
 	let diffuse = irradiance * albedo;
 
-	let prefiltered_color = textureSampleLevel(specular_prefilter, ibl_s, r, roughness * 9.0).rgb;
+	let roughness_level = f32(textureNumLevels(specular_prefilter)) * roughness * (2.0 - roughness);
+	let prefiltered_color = textureSampleLevel(specular_prefilter, ibl_s, r, roughness_level).rgb;
 	let brdf = textureSample(brdf_lut, ibl_s, vec2<f32>(max(dot(n, v), 0.0), roughness)).rg;
-	let specular = prefiltered_color * (f * brdf.x + brdf.y);
+	let specular = prefiltered_color * (kS * brdf.x + brdf.y);
 	
 	let ambient = (kD * diffuse + specular);
 	

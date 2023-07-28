@@ -90,7 +90,8 @@ impl Renderer {
         let scene = Scene::from_gltf(
             &device,
             &queue,
-            "resources/glTF-Sample-Models/2.0/WaterBottle/glTF/WaterBottle.gltf".to_string(),
+            "resources/glTF-Sample-Models/2.0/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
+                .to_string(),
         )
         .unwrap();
 
