@@ -10,6 +10,7 @@ use crate::{
     passes,
     resources::SceneUniformData,
     texture::Texture,
+    RendererConfig,
 };
 
 pub struct Renderer {
@@ -32,7 +33,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub async fn new(window: &Window) -> Self {
+    pub async fn new(window: &Window, renderer_config: &RendererConfig) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -87,13 +88,7 @@ impl Renderer {
 
         let camera = Camera::default();
         let camera_controller = Box::new(FlyingCamera::new());
-        let scene = Scene::from_gltf(
-            &device,
-            &queue,
-            "resources/glTF-Sample-Models/2.0/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
-                .to_string(),
-        )
-        .unwrap();
+        let scene = Scene::from_gltf(&device, &queue, &renderer_config.scene).unwrap();
 
         let gbuffers = GBuffers::new(&device, &config);
         let compose_output = Texture::new(
@@ -106,8 +101,8 @@ impl Renderer {
         );
 
         let write_gbuffers = passes::WriteGBuffers::new(&device);
-        let compose = passes::Compose::new(&device, &queue);
-        let skybox = passes::Skybox::new(&device, &queue);
+        let compose = passes::Compose::new(&device, &queue, &renderer_config);
+        let skybox = passes::Skybox::new(&device, &queue, &renderer_config);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
 
         Self {

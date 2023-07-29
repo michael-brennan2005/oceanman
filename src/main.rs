@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use clap::Parser;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -20,8 +21,22 @@ mod texture;
 
 use renderer::Renderer;
 
+#[derive(Parser)]
+pub struct RendererConfig {
+    /// gltf scene to load
+    pub scene: String,
+    /// skybox to load
+    pub skybox: String,
+    /// irradiance (diffuse) to load
+    pub irradiance: String,
+    /// prefilter (specular) to load
+    pub prefilter: String,
+}
+
 // I HATE ASYNC! I HATE ASYNC!
 pub async fn run() {
+    let args = RendererConfig::parse();
+
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -30,7 +45,7 @@ pub async fn run() {
         .build(&event_loop)
         .unwrap();
 
-    let mut app = Renderer::new(&window).await;
+    let mut app = Renderer::new(&window, &args).await;
     let mut last_render_time = Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

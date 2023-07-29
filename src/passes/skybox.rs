@@ -8,6 +8,7 @@ use crate::{
     loader::Scene,
     resources::SceneUniform,
     texture::{Sampler, Texture},
+    RendererConfig,
 };
 
 pub struct Skybox {
@@ -18,8 +19,8 @@ pub struct Skybox {
 }
 
 impl Skybox {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let cubemap = Cubemap::from_dds(device, queue, "resources/christmas_officeEnvHDR.dds");
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, config: &RendererConfig) -> Self {
+        let cubemap = Cubemap::from_dds(device, queue, &config.skybox);
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
         let cubemap_bind_group_layout =

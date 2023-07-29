@@ -1,6 +1,6 @@
 # OceanMan
 
-OceanMan is a real-time renderer focused on making realism. It is developed using Rust, WebGPU, and wgpu. It is currently in version 0.2.
+OceanMan is a real-time renderer focused on realism. It is developed using Rust, WebGPU, and wgpu. It is currently in version 0.3.
 
 ## Installation.
 
@@ -13,21 +13,21 @@ cargo build
 
 ## Usage
 
-OceanMan requires a json file to render. The json file describes how the scene should be setup, and an example one is located in the resources/ directory.
+OceanMan requires a gltf file to render, as well as environment map, irradiance map, and prefilter map (all in .dds format). 
 ```bash
-oceanman scene.json
+oceanman scene.gltf environment.dds irradiance.dds prefilter.dds
 ```
 
 ## Features
 
-* Phong shading
-* Texturing
-* Shadow mapping
-* Configurable models and model positions/orientations.
-* One directional light (configurable)
-* Loading in .obj files
+* Physically based shading (Cook-Torrance BRDF)
+* Image-based lighting
+* glTF scene support - loads in color, metal/roughness, and normal maps
+* Basic scene camera
 
 ## Images
+![Damaged helmet](screenshots/one.png)
+![Water bottle](screenshots/two.png)
 
 ## License
 

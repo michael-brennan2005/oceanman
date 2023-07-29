@@ -11,6 +11,7 @@ use crate::{
     loader::Scene,
     resources::{LightingUniform, SceneUniform},
     texture::{Sampler, Texture},
+    RendererConfig,
 };
 
 pub struct IBL {
@@ -22,9 +23,13 @@ pub struct IBL {
 }
 
 impl IBL {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer_config: &RendererConfig,
+    ) -> Self {
         let brdf_lookup = {
-            let file = std::fs::read("resources/christmas_officeBrdf.dds").unwrap();
+            let file = std::fs::read("resources/OCEANMAN_BRDF.dds").unwrap();
             let img = ddsfile::Dds::read(file.as_slice()).unwrap();
 
             if img.get_d3d_format().unwrap() != D3DFormat::A32B32G32R32F {
@@ -53,10 +58,8 @@ impl IBL {
             )
         };
 
-        let diffuse_radiance =
-            Cubemap::from_dds(device, queue, "resources/christmas_officeDiffuseHDR.dds");
-        let specular_radiance =
-            Cubemap::from_dds(device, queue, "resources/christmas_officeSpecularHDR.dds");
+        let diffuse_radiance = Cubemap::from_dds(device, queue, &renderer_config.irradiance);
+        let specular_radiance = Cubemap::from_dds(device, queue, &renderer_config.prefilter);
 
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
@@ -142,8 +145,12 @@ pub struct Compose {
 }
 
 impl Compose {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let ibl = IBL::new(device, queue);
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer_config: &RendererConfig,
+    ) -> Self {
+        let ibl = IBL::new(device, queue, renderer_config);
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/compose.wgsl"));
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

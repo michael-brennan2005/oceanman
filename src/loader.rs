@@ -161,7 +161,7 @@ impl Scene {
     pub fn from_gltf<'a>(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        path: String,
+        path: &String,
     ) -> Result<Self, SceneLoadError> {
         let (document, buffers, images) = gltf::import(path).unwrap();
 

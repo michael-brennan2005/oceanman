@@ -21,3 +21,4 @@ gltf = "1.2.0"
 mikktspace = "0.3.0"
 ddsfile = "0.5.1"
 half = { version = "2.3.1", features = [ "bytemuck" ] }
+clap = { version = "4.3.19", features = ["derive"] }
