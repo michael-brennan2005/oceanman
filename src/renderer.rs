@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use wgpu::TextureUsages;
+use wgpu::{BufferUsages, QuerySetDescriptor, TextureUsages};
 use winit::{event::WindowEvent, window::Window};
 
 use crate::{
@@ -13,10 +13,53 @@ use crate::{
     RendererConfig,
 };
 
+pub struct TimestampQueries {
+    timestamps: wgpu::QuerySet,
+    timestamp_period: f32,
+    data_buffer: wgpu::Buffer,
+    mapping_buffer: wgpu::Buffer,
+}
+
+impl TimestampQueries {
+    const NUM_PASSES: u32 = 4;
+
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let timestamps = device.create_query_set(&QuerySetDescriptor {
+            label: Some("Timestamps"),
+            ty: wgpu::QueryType::Timestamp,
+            count: 2_u32 * Self::NUM_PASSES,
+        });
+
+        let timestamp_period = queue.get_timestamp_period();
+
+        let data_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Timestamps data buffer"),
+            size: (2_u32 * Self::NUM_PASSES * std::mem::size_of::<u64>() as u32) as u64,
+            usage: BufferUsages::COPY_SRC | BufferUsages::QUERY_RESOLVE,
+            mapped_at_creation: false,
+        });
+
+        let mapping_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Timestamps mapping buffer"),
+            size: (2_u32 * Self::NUM_PASSES * std::mem::size_of::<u64>() as u32) as u64,
+            usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            timestamps,
+            timestamp_period,
+            data_buffer,
+            mapping_buffer,
+        }
+    }
+}
+
 pub struct Renderer {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    timestamps: TimestampQueries,
 
     camera: Camera,
     camera_controller: Box<dyn CameraController>,
@@ -56,7 +99,7 @@ impl Renderer {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("Device"),
-                    features: wgpu::Features::empty(),
+                    features: wgpu::Features::TIMESTAMP_QUERY,
                     limits: wgpu::Limits::default(),
                 },
                 None,
@@ -85,6 +128,8 @@ impl Renderer {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
+
+        let timestamps = TimestampQueries::new(&device, &queue);
 
         let camera = Camera::default();
         let camera_controller = Box::new(FlyingCamera::new());
@@ -118,6 +163,7 @@ impl Renderer {
             compose,
             skybox,
             tonemapping,
+            timestamps,
         }
     }
 
@@ -144,22 +190,69 @@ impl Renderer {
                 label: Some("Command encoder"),
             });
 
+        encoder.write_timestamp(&self.timestamps.timestamps, 0);
         self.write_gbuffers
             .pass(&self.scene, &self.gbuffers, &mut encoder);
+        encoder.write_timestamp(&self.timestamps.timestamps, 1);
+        encoder.write_timestamp(&self.timestamps.timestamps, 2);
         self.compose.pass(
             &self.scene,
             &self.gbuffers,
             &self.compose_output.view,
             &mut encoder,
         );
+        encoder.write_timestamp(&self.timestamps.timestamps, 3);
+        encoder.write_timestamp(&self.timestamps.timestamps, 4);
         self.skybox.pass(
             &self.scene,
             &self.compose_output.view,
             &self.gbuffers.depth.view,
             &mut encoder,
         );
+        encoder.write_timestamp(&self.timestamps.timestamps, 5);
+        encoder.write_timestamp(&self.timestamps.timestamps, 6);
         self.tonemapping.pass(&view, &mut encoder);
+        encoder.write_timestamp(&self.timestamps.timestamps, 7);
+
+        encoder.resolve_query_set(
+            &self.timestamps.timestamps,
+            0..8,
+            &self.timestamps.data_buffer,
+            0,
+        );
+        encoder.copy_buffer_to_buffer(
+            &self.timestamps.data_buffer,
+            0,
+            &self.timestamps.mapping_buffer,
+            0,
+            (2 * TimestampQueries::NUM_PASSES * std::mem::size_of::<u64>() as u32) as u64,
+        );
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        self.timestamps
+            .mapping_buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, |_| {});
+        self.device.poll(wgpu::MaintainBase::Wait);
+        {
+            let binding = &self.timestamps.mapping_buffer.slice(..).get_mapped_range();
+            let timestamp_data: &[u64] = bytemuck::cast_slice(&binding);
+
+            for times in timestamp_data.chunks(2).enumerate() {
+                let duration_ns =
+                    (times.1[1] - times.1[0]) as f32 * self.timestamps.timestamp_period;
+                let pass = match times.0 {
+                    0 => "Write GBuffers",
+                    1 => "Compose",
+                    2 => "Skybox",
+                    3 => "Tonemapping",
+                    _ => "UNKNOWN",
+                };
+                println!("{} took {}us to complete.", pass, duration_ns / 1000.0);
+            }
+            println!("-------------------------");
+        }
+        self.timestamps.mapping_buffer.unmap();
         output.present();
         Ok(())
     }
