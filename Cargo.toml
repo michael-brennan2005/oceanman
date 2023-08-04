@@ -22,3 +22,6 @@ mikktspace = "0.3.0"
 ddsfile = "0.5.1"
 half = { version = "2.3.1", features = [ "bytemuck" ] }
 clap = { version = "4.3.19", features = ["derive"] }
+egui-wgpu = "0.22.0"
+egui-winit = "0.22.0"
+egui = "0.22.0"

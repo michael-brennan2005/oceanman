@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use clap::Parser;
+use egui_wgpu::renderer::ScreenDescriptor;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -45,6 +46,12 @@ pub async fn run() {
         .build(&event_loop)
         .unwrap();
 
+    let mut egui_state = egui_winit::State::new(&event_loop);
+    let mut egui_context = egui::Context::default();
+    let egui_screen_descriptor = ScreenDescriptor {
+        size_in_pixels: [1600, 900],
+        pixels_per_point: window.scale_factor() as f32,
+    };
     let mut app = Renderer::new(&window, &args).await;
     let mut last_render_time = Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
@@ -52,6 +59,7 @@ pub async fn run() {
             ref event,
             window_id,
         } if window_id == window.id() => {
+            egui_state.on_event(&egui_context, event);
             app.input(event);
             match event {
                 WindowEvent::CloseRequested
@@ -79,11 +87,23 @@ pub async fn run() {
             }
         }
         Event::RedrawRequested(window_id) if window_id == window.id() => {
+            let raw_input = egui_state.take_egui_input(&window);
+            let ui_output = egui_context.run(raw_input, |ctx| {
+                app.ui(ctx);
+            });
+
+            egui_state.handle_platform_output(&window, &egui_context, ui_output.platform_output);
+            let clipped_primitives = egui_context.tessellate(ui_output.shapes);
+
             let now = Instant::now();
             let dt = now - last_render_time;
             last_render_time = now;
             app.update(dt);
-            match app.render() {
+            match app.render(
+                &ui_output.textures_delta,
+                &clipped_primitives,
+                &egui_screen_descriptor,
+            ) {
                 Ok(_) => {}
                 Err(e) => eprintln!("{:?}", e),
             }
