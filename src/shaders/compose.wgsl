@@ -128,7 +128,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let n = normal;
 	
 	var f0 = vec3<f32>(0.04, 0.04, 0.04);
-	f0 = mix(f0, albedo, metalness);
+	f0 = mix(f0, albedo,  metalness);
 	
 	var l0 = vec3<f32>(0.0, 0.0, 0.0);
 	for (var i: u32 = 0u; i < lighting.count; i++) {
@@ -159,7 +159,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let nDotV = max(dot(n, v), 0.0);
 	let r = reflect(-v, n);
 	
-	let kS = schlick_fresnel_roughness(max(dot(n, v), 0.0), f0, roughness);
+	let kS = schlick_fresnel_roughness(nDotV, f0, roughness);
 	let kD = (1.0 - kS) * (1.0 - metalness);
 
 	let irradiance = textureSample(diffuse_irradiance, ibl_s, n).rgb;
@@ -167,8 +167,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 
 	let roughness_level = f32(textureNumLevels(specular_prefilter)) * roughness * (2.0 - roughness);
 	let prefiltered_color = textureSampleLevel(specular_prefilter, ibl_s, r, roughness_level).rgb;
-	let brdf = textureSample(brdf_lut, ibl_s, vec2<f32>(max(dot(n, v), 0.0), roughness)).rg;
-	let specular = prefiltered_color * (kS * brdf.x + brdf.y);
+	let brdf = textureSample(brdf_lut, ibl_s, vec2<f32>(nDotV, roughness)).rg;
+	let specular = prefiltered_color * (f0 * brdf.x + brdf.y);
 	
 	let ambient = (kD * diffuse + specular);
 	

@@ -4,3 +4,5 @@ zig-out/
 # Added by cargo
 
 /target
+resources/*
+!resources/OCEANMAN_BRDF.dds
