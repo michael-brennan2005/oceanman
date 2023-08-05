@@ -172,6 +172,7 @@ impl Renderer {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
+        self.camera_controller.ui(&mut self.camera, ctx);
         // omfg are you fr
         macro_rules! shaders_helper {
             ($ui:ident, $lowercase:ident, $uppercase:ident) => {

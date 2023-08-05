@@ -6,7 +6,7 @@ use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, Win
 use crate::spring::Spring;
 
 pub struct Camera {
-    eye: Vec3,
+    pub eye: Vec3,
     front: Vec3,
     up: Vec3,
     aspect: f32,
@@ -43,6 +43,7 @@ impl Camera {
 pub trait CameraController {
     fn input(&mut self, event: &WindowEvent);
     fn update(&mut self, camera: &mut Camera, dt: Duration);
+    fn ui(&mut self, camera: &mut Camera, ctx: &egui::Context) {}
 }
 
 pub struct FlyingCamera {
@@ -179,5 +180,20 @@ impl CameraController for FlyingCamera {
             * self.y_spring.update(dt_seconds)
             * self.max_speed
             * dt_seconds;
+    }
+
+    fn ui(&mut self, camera: &mut Camera, ctx: &egui::Context) {
+        egui::Window::new("Camera").show(ctx, |ui| {
+            ui.label(format!(
+                "Position: {:.3} {:.3} {:.3}\nYaw: {:.3}\nPitch: {:.3}",
+                camera.eye.x, camera.eye.y, camera.eye.z, self.yaw, self.pitch
+            ));
+
+            ui.add(
+                egui::Slider::new(&mut self.max_speed, 0.0..=10.0)
+                    .text("Camera speed")
+                    .show_value(true),
+            );
+        });
     }
 }
