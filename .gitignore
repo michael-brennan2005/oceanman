@@ -6,3 +6,4 @@ zig-out/
 /target
 resources/*
 !resources/OCEANMAN_BRDF.dds
+!resources/OCEANMAN_UNSPECIFIED.dds

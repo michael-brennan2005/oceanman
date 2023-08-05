@@ -25,13 +25,17 @@ use renderer::Renderer;
 #[derive(Parser)]
 pub struct RendererConfig {
     /// gltf scene to load
-    pub scene: String,
+    #[arg(short, long)]
+    pub gltf: Option<String>,
     /// skybox to load
-    pub skybox: String,
+    #[arg(short, long)]
+    pub skybox: Option<String>,
     /// irradiance (diffuse) to load
-    pub irradiance: String,
+    #[arg(short, long)]
+    pub irradiance: Option<String>,
     /// prefilter (specular) to load
-    pub prefilter: String,
+    #[arg(short, long)]
+    pub prefilter: Option<String>,
 }
 
 // I HATE ASYNC! I HATE ASYNC!

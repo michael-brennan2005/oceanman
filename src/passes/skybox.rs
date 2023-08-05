@@ -23,7 +23,12 @@ pub struct Skybox {
 
 impl Skybox {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, config: &RendererConfig) -> Self {
-        let cubemap = Cubemap::from_dds(device, queue, &config.skybox);
+        let default = String::from("resources/OCEANMAN_UNSPECIFIED.dds");
+        let cubemap_path = match &config.skybox {
+            Some(x) => x,
+            None => &default,
+        };
+        let cubemap = Cubemap::from_dds(device, queue, cubemap_path);
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
         let cubemap_bind_group_layout = Skybox::cubemap_bind_group_layout(device);
@@ -51,6 +56,35 @@ impl Skybox {
             pipeline,
             cubemap_bind_group,
         }
+    }
+
+    pub fn update_cubemap(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        new_skybox: &String,
+    ) {
+        let cubemap = Cubemap::from_dds(device, queue, new_skybox);
+
+        let cubemap_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("skybox bind group"),
+            layout: &Skybox::cubemap_bind_group_layout(device),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&cubemap.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.cubemap_sampler.sampler),
+                },
+            ],
+        });
+
+        self.cubemap.texture.destroy();
+
+        self.cubemap = cubemap;
+        self.cubemap_bind_group = cubemap_bind_group;
     }
 
     pub fn cubemap_bind_group_layout(device: &Device) -> BindGroupLayout {

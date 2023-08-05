@@ -356,4 +356,26 @@ impl Scene {
             ),
         })
     }
+
+    pub fn new(device: &wgpu::Device) -> Self {
+        let lighting_direction = Vec3::new(1.0, 0.0, 0.0);
+        Self {
+            meshes: vec![],
+            materials: vec![],
+            scene: SceneUniform::new(
+                device,
+                SceneUniformData::new(),
+                SceneUniformData::shadow(vec3(100.0, 100.0, 100.0), lighting_direction),
+            ),
+            lighting: LightingUniform::new(
+                device,
+                LightingUniformData::new(vec![
+                    (vec3(-4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(4.0, 4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(-4.0, -4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                    (vec3(4.0, -4.0, -1.0), vec3(1.0, 1.0, 1.0)),
+                ]),
+            ),
+        }
+    }
 }

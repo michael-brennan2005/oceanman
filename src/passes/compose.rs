@@ -61,8 +61,19 @@ impl IBL {
             )
         };
 
-        let diffuse_radiance = Cubemap::from_dds(device, queue, &renderer_config.irradiance);
-        let specular_radiance = Cubemap::from_dds(device, queue, &renderer_config.prefilter);
+        let default = String::from("resources/OCEANMAN_UNSPECIFIED.dds");
+
+        let irradiance_path = match &renderer_config.irradiance {
+            Some(x) => x,
+            None => &default,
+        };
+        let diffuse_radiance = Cubemap::from_dds(device, queue, irradiance_path);
+
+        let prefilter_path = match &renderer_config.prefilter {
+            Some(x) => x,
+            None => &default,
+        };
+        let specular_radiance = Cubemap::from_dds(device, queue, prefilter_path);
 
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
@@ -96,6 +107,47 @@ impl IBL {
             cubemap_sampler,
             bind_group,
         }
+    }
+
+    pub fn update(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        irradiance: Option<&String>,
+        prefilter: Option<&String>,
+    ) {
+        if let Some(irradiance_path) = irradiance {
+            self.diffuse_radiance.texture.destroy();
+            self.diffuse_radiance = Cubemap::from_dds(device, queue, irradiance_path);
+        }
+
+        if let Some(prefilter_path) = prefilter {
+            self.specular_radiance.texture.destroy();
+            self.specular_radiance = Cubemap::from_dds(device, queue, prefilter_path);
+        }
+
+        self.bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("IBL bind group"),
+            layout: &IBL::bind_group_layout(device),
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.brdf_lookup.view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&self.diffuse_radiance.view),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.specular_radiance.view),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.cubemap_sampler.sampler),
+                },
+            ],
+        });
     }
 
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -143,7 +195,7 @@ impl IBL {
     }
 }
 pub struct Compose {
-    ibl: IBL,
+    pub ibl: IBL,
     pipeline: wgpu::RenderPipeline,
 }
 
@@ -238,6 +290,7 @@ impl Compose {
         }
     }
 }
+
 impl ReloadableShaders for Compose {
     fn available_shaders() -> &'static [&'static str] {
         &["../shaders/compose.wgsl"]

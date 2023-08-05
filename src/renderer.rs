@@ -18,6 +18,7 @@ use crate::{
 #[derive(Default)]
 pub struct RendererUIState {
     shader_error_message: String,
+    loader_error_message: String,
 }
 
 pub struct Renderer {
@@ -98,8 +99,10 @@ impl Renderer {
 
         let camera = Camera::default();
         let camera_controller = Box::new(FlyingCamera::new());
-        let scene = Scene::from_gltf(&device, &queue, &renderer_config.scene).unwrap();
-
+        let scene = match &renderer_config.gltf {
+            Some(x) => Scene::from_gltf(&device, &queue, x).unwrap(),
+            None => Scene::new(&device),
+        };
         let gbuffers = GBuffers::new(&device, &config);
         let compose_output = Texture::new(
             &device,
@@ -211,6 +214,69 @@ impl Renderer {
             ui.label(
                 egui::RichText::new(&self.egui_state.shader_error_message).color(Color32::RED),
             );
+        });
+
+        egui::Window::new("Loader").show(ctx, |ui| {
+            if ui.button("Load glTF").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("glTF", &["gltf", "glb"])
+                    .pick_file()
+                {
+                    let scene = Scene::from_gltf(
+                        &self.device,
+                        &self.queue,
+                        &String::from(path.to_str().unwrap()),
+                    );
+                    match scene {
+                        Ok(_) => self.scene = scene.unwrap(),
+                        Err(_) => {
+                            self.egui_state.loader_error_message =
+                                String::from("Failed to load glTF.")
+                        }
+                    }
+                }
+            }
+
+            if ui.button("Load skybox").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("dds", &["dds"])
+                    .pick_file()
+                {
+                    self.skybox.update_cubemap(
+                        &self.device,
+                        &self.queue,
+                        &String::from(path.to_str().unwrap()),
+                    );
+                }
+            }
+
+            if ui.button("Load irradiance (diffuse)").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("dds", &["dds"])
+                    .pick_file()
+                {
+                    self.compose.ibl.update(
+                        &self.device,
+                        &self.queue,
+                        Some(&String::from(path.to_str().unwrap())),
+                        None,
+                    );
+                }
+            }
+
+            if ui.button("Load prefilter (specular)").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("dds", &["dds"])
+                    .pick_file()
+                {
+                    self.compose.ibl.update(
+                        &self.device,
+                        &self.queue,
+                        None,
+                        Some(&String::from(path.to_str().unwrap())),
+                    );
+                }
+            }
         });
     }
 
