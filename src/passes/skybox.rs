@@ -1,6 +1,7 @@
 use wgpu::{
-    BindGroupDescriptor, BindGroupLayoutDescriptor, BlendState, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, TextureView, VertexState,
+    BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor, BlendState, Device,
+    FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, RenderPipeline,
+    ShaderModule, TextureView, VertexState,
 };
 
 use crate::{
@@ -10,6 +11,8 @@ use crate::{
     texture::{Sampler, Texture},
     RendererConfig,
 };
+
+use super::ReloadableShaders;
 
 pub struct Skybox {
     pipeline: wgpu::RenderPipeline,
@@ -23,30 +26,9 @@ impl Skybox {
         let cubemap = Cubemap::from_dds(device, queue, &config.skybox);
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
-        let cubemap_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("skybox bind group layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::Cube,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
+        let cubemap_bind_group_layout = Skybox::cubemap_bind_group_layout(device);
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/skybox.wgsl"));
+        let pipeline = Skybox::pipeline(device, &shader);
 
         let cubemap_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("skybox bind group"),
@@ -63,24 +45,57 @@ impl Skybox {
             ],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        Skybox {
+            cubemap,
+            cubemap_sampler,
+            pipeline,
+            cubemap_bind_group,
+        }
+    }
+
+    pub fn cubemap_bind_group_layout(device: &Device) -> BindGroupLayout {
+        device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("skybox bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        })
+    }
+
+    pub fn pipeline(device: &Device, shader_module: &ShaderModule) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Skybox pipeline"),
 
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Skybox pipeline layout"),
                 bind_group_layouts: &[
                     &SceneUniform::bind_group_layout(device),
-                    &cubemap_bind_group_layout,
+                    &Skybox::cubemap_bind_group_layout(device),
                 ],
                 push_constant_ranges: &[],
             })),
             vertex: VertexState {
-                module: &shader,
+                module: &shader_module,
                 entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(FragmentState {
-                module: &shader,
+                module: &shader_module,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::Rgba16Float,
@@ -111,14 +126,7 @@ impl Skybox {
             },
 
             multiview: None,
-        });
-
-        Skybox {
-            cubemap,
-            cubemap_sampler,
-            pipeline,
-            cubemap_bind_group,
-        }
+        })
     }
 
     pub fn pass(
@@ -154,5 +162,21 @@ impl Skybox {
             pass.set_bind_group(1, &self.cubemap_bind_group, &[]);
             pass.draw(0..36, 0..1);
         }
+    }
+}
+
+impl ReloadableShaders for Skybox {
+    fn available_shaders() -> &'static [&'static str] {
+        &["../shaders/skybox.wgsl"]
+    }
+
+    fn reload(
+        &mut self,
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+        index: usize,
+        shader_module: wgpu::ShaderModule,
+    ) {
+        self.pipeline = Skybox::pipeline(device, &shader_module);
     }
 }

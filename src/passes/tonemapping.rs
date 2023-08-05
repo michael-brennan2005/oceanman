@@ -1,9 +1,11 @@
 use wgpu::{
-    FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, TextureView,
-    VertexState,
+    BindGroupLayout, Device, FragmentState, MultisampleState, PipelineLayoutDescriptor,
+    PrimitiveState, RenderPipeline, ShaderModule, TextureView, VertexState,
 };
 
 use crate::texture::Texture;
+
+use super::ReloadableShaders;
 
 pub struct Tonemapping {
     pipeline: wgpu::RenderPipeline,
@@ -19,20 +21,8 @@ impl Tonemapping {
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../shaders/tonemapping.wgsl"));
 
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                }],
-            });
+        let texture_bind_group_layout = Tonemapping::texture_bind_group_layout(device);
+        let pipeline = Tonemapping::pipeline(device, config, &shader);
 
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -43,12 +33,39 @@ impl Tonemapping {
             }],
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        Self {
+            texture_bind_group,
+            pipeline,
+        }
+    }
+
+    pub fn texture_bind_group_layout(device: &wgpu::Device) -> BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        })
+    }
+
+    pub fn pipeline(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        shader: &ShaderModule,
+    ) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Tonemap pipeline"),
 
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Tonemap pipeline layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[&Tonemapping::texture_bind_group_layout(device)],
                 push_constant_ranges: &[],
             })),
             vertex: VertexState {
@@ -82,12 +99,7 @@ impl Tonemapping {
             },
 
             multiview: None,
-        });
-
-        Self {
-            texture_bind_group,
-            pipeline,
-        }
+        })
     }
 
     pub fn pass(&self, output: &TextureView, encoder: &mut wgpu::CommandEncoder) {
@@ -110,5 +122,20 @@ impl Tonemapping {
 
             pass.draw(0..6, 0..1);
         }
+    }
+}
+impl ReloadableShaders for Tonemapping {
+    fn available_shaders() -> &'static [&'static str] {
+        &["../shaders/tonemapping.wgsl"]
+    }
+
+    fn reload(
+        &mut self,
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+        index: usize,
+        shader_module: wgpu::ShaderModule,
+    ) {
+        self.pipeline = Tonemapping::pipeline(device, config, &shader_module);
     }
 }

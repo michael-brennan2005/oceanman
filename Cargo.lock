@@ -1379,6 +1379,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "naga"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1ceaaa4eedaece7e4ec08c55c640ba03dbb73fb812a6570a59bcf1930d0f70e"
+dependencies = [
+ "bit-set",
+ "bitflags 2.3.2",
+ "codespan-reporting",
+ "hexf-parse",
+ "indexmap",
+ "log",
+ "num-traits 0.2.15",
+ "rustc-hash",
+ "termcolor",
+ "thiserror",
+ "unicode-xid",
+]
+
+[[package]]
 name = "nalgebra"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1653,6 +1672,7 @@ dependencies = [
  "image",
  "log",
  "mikktspace",
+ "naga 0.13.0",
  "pollster",
  "serde",
  "serde_json",
@@ -2497,7 +2517,7 @@ dependencies = [
  "cfg-if",
  "js-sys",
  "log",
- "naga",
+ "naga 0.12.2",
  "parking_lot",
  "profiling",
  "raw-window-handle",
@@ -2522,7 +2542,7 @@ dependencies = [
  "bitflags 2.3.2",
  "codespan-reporting",
  "log",
- "naga",
+ "naga 0.12.2",
  "parking_lot",
  "profiling",
  "raw-window-handle",
@@ -2560,7 +2580,7 @@ dependencies = [
  "libloading 0.8.0",
  "log",
  "metal",
- "naga",
+ "naga 0.12.2",
  "objc",
  "parking_lot",
  "profiling",

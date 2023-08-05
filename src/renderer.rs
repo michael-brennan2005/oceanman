@@ -1,25 +1,28 @@
-use std::time::Duration;
+use std::{fs, path::Path, time::Duration};
 
-use egui::{ClippedPrimitive, TexturesDelta};
+use egui::{ClippedPrimitive, Color32, TexturesDelta};
 use egui_wgpu::renderer::ScreenDescriptor;
-use wgpu::{BufferUsages, QuerySetDescriptor, RenderPassDescriptor, TextureUsages};
+use wgpu::{RenderPassDescriptor, ShaderModuleDescriptor, TextureUsages};
 use winit::{event::WindowEvent, window::Window};
 
 use crate::{
     camera::{Camera, CameraController, FlyingCamera},
     gbuffers::GBuffers,
     loader::Scene,
-    passes,
+    passes::{self, Compose, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers},
     resources::SceneUniformData,
     texture::Texture,
     RendererConfig,
 };
 
 #[derive(Default)]
-pub struct RendererUIState {}
+pub struct RendererUIState {
+    shader_error_message: String,
+}
 
 pub struct Renderer {
     surface: wgpu::Surface,
+    config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
     queue: wgpu::Queue,
 
@@ -115,6 +118,7 @@ impl Renderer {
 
         Self {
             surface,
+            config,
             device,
             queue,
             camera,
@@ -142,7 +146,72 @@ impl Renderer {
             .update(&self.queue, SceneUniformData::new_from_camera(&self.camera));
     }
 
-    pub fn ui(&self, ctx: &egui::Context) {}
+    // TODO: seems fragile?
+    pub fn reload_shader<T: ReloadableShaders, U: AsRef<Path>>(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        pass: &mut T,
+        index: usize,
+        path: U,
+    ) -> Result<(), String> {
+        let path = Path::new("src/").join(path.as_ref().strip_prefix("../").unwrap());
+        let Ok(code) = fs::read(&path) else { return Err(String::from("Error reading file.")); };
+
+        let parsed_shader = naga::front::wgsl::parse_str(&String::from_utf8_lossy(code.as_slice()));
+        match parsed_shader {
+            Ok(_) => {
+                let new_shader = device.create_shader_module(ShaderModuleDescriptor {
+                    label: None,
+                    source: wgpu::ShaderSource::Wgsl(String::from_utf8_lossy(code.as_slice())),
+                });
+                pass.reload(device, config, index, new_shader);
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn ui(&mut self, ctx: &egui::Context) {
+        // omfg are you fr
+        macro_rules! shaders_helper {
+            ($ui:ident, $lowercase:ident, $uppercase:ident) => {
+                $ui.label(egui::RichText::new(stringify!($uppercase)).strong());
+                $ui.end_row();
+
+                let available_shaders: &[&str] = $uppercase::available_shaders();
+
+                for i in available_shaders.iter().enumerate() {
+                    $ui.label(*i.1);
+                    if $ui.button("Reload").clicked() {
+                        let error_message = Renderer::reload_shader(
+                            &self.device,
+                            &self.config,
+                            &mut self.$lowercase,
+                            i.0,
+                            *i.1,
+                        );
+                        self.egui_state.shader_error_message = match error_message {
+                            Ok(_) => String::from(""),
+                            Err(x) => x,
+                        }
+                    }
+                    $ui.end_row();
+                }
+            };
+        }
+        egui::Window::new("Shaders").show(ctx, |ui| {
+            egui::Grid::new("shaders").show(ui, |ui| {
+                shaders_helper!(ui, write_gbuffers, WriteGBuffers);
+                shaders_helper!(ui, compose, Compose);
+                shaders_helper!(ui, skybox, Skybox);
+                shaders_helper!(ui, tonemapping, Tonemapping);
+            });
+
+            ui.label(
+                egui::RichText::new(&self.egui_state.shader_error_message).color(Color32::RED),
+            );
+        });
+    }
 
     pub fn render(
         &mut self,

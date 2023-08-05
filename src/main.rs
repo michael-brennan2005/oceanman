@@ -47,7 +47,7 @@ pub async fn run() {
         .unwrap();
 
     let mut egui_state = egui_winit::State::new(&event_loop);
-    let mut egui_context = egui::Context::default();
+    let egui_context = egui::Context::default();
     let egui_screen_descriptor = ScreenDescriptor {
         size_in_pixels: [1600, 900],
         pixels_per_point: window.scale_factor() as f32,

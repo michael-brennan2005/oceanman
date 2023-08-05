@@ -1,6 +1,6 @@
 use wgpu::{
-    BlendState, FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState,
-    VertexState,
+    BlendState, Device, FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState,
+    RenderPipeline, ShaderModule, VertexState,
 };
 
 use crate::{
@@ -11,6 +11,8 @@ use crate::{
     texture::Texture,
 };
 
+use super::ReloadableShaders;
+
 pub struct WriteGBuffers {
     pipeline: wgpu::RenderPipeline,
 }
@@ -20,7 +22,12 @@ impl WriteGBuffers {
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../shaders/write_gbuffers.wgsl"));
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = WriteGBuffers::pipeline(device, &shader);
+        Self { pipeline }
+    }
+
+    pub fn pipeline(device: &wgpu::Device, shader: &ShaderModule) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Write gbuffers pipeline"),
 
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -81,9 +88,7 @@ impl WriteGBuffers {
             },
 
             multiview: None,
-        });
-
-        Self { pipeline }
+        })
     }
 
     /// Complete a GBuffersPass. Pass in the encoder that is being used for the whole render graph.
@@ -138,5 +143,21 @@ impl WriteGBuffers {
                 pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
         }
+    }
+}
+
+impl ReloadableShaders for WriteGBuffers {
+    fn available_shaders() -> &'static [&'static str] {
+        &["../shaders/write_gbuffers.wgsl"]
+    }
+
+    fn reload(
+        &mut self,
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+        index: usize,
+        shader_module: wgpu::ShaderModule,
+    ) {
+        self.pipeline = WriteGBuffers::pipeline(device, &shader_module);
     }
 }

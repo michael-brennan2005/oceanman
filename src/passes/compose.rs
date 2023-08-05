@@ -1,8 +1,9 @@
 use ddsfile::D3DFormat;
 use half::f16;
 use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, FragmentState, MultisampleState, PipelineLayoutDescriptor,
-    PrimitiveState, TextureFormat, TextureUsages, TextureView, VertexState,
+    BindGroupDescriptor, BindGroupEntry, Device, FragmentState, MultisampleState,
+    PipelineLayoutDescriptor, PrimitiveState, RenderPipeline, ShaderModule, TextureFormat,
+    TextureUsages, TextureView, VertexState,
 };
 
 use crate::{
@@ -13,6 +14,8 @@ use crate::{
     texture::{Sampler, Texture},
     RendererConfig,
 };
+
+use super::ReloadableShaders;
 
 pub struct IBL {
     brdf_lookup: Texture,
@@ -152,8 +155,12 @@ impl Compose {
     ) -> Self {
         let ibl = IBL::new(device, queue, renderer_config);
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/compose.wgsl"));
+        let pipeline = Compose::pipeline(device, &shader);
+        Self { ibl, pipeline }
+    }
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    pub fn pipeline(device: &wgpu::Device, shader: &ShaderModule) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Compose gbuffers pipeline"),
 
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -197,9 +204,7 @@ impl Compose {
             },
 
             multiview: None,
-        });
-
-        Self { ibl, pipeline }
+        })
     }
 
     pub fn pass(
@@ -231,5 +236,20 @@ impl Compose {
 
             pass.draw(0..6, 0..1);
         }
+    }
+}
+impl ReloadableShaders for Compose {
+    fn available_shaders() -> &'static [&'static str] {
+        &["../shaders/compose.wgsl"]
+    }
+
+    fn reload(
+        &mut self,
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+        index: usize,
+        shader_module: wgpu::ShaderModule,
+    ) {
+        self.pipeline = Compose::pipeline(device, &shader_module);
     }
 }
