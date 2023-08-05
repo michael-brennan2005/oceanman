@@ -2,6 +2,7 @@ use std::{fs, path::Path, time::Duration};
 
 use egui::{ClippedPrimitive, Color32, TexturesDelta};
 use egui_wgpu::renderer::ScreenDescriptor;
+use pollster::block_on;
 use wgpu::{RenderPassDescriptor, ShaderModuleDescriptor, TextureUsages};
 use winit::{event::WindowEvent, window::Window};
 
@@ -160,17 +161,18 @@ impl Renderer {
         let path = Path::new("src/").join(path.as_ref().strip_prefix("../").unwrap());
         let Ok(code) = fs::read(&path) else { return Err(String::from("Error reading file.")); };
 
-        let parsed_shader = naga::front::wgsl::parse_str(&String::from_utf8_lossy(code.as_slice()));
-        match parsed_shader {
-            Ok(_) => {
-                let new_shader = device.create_shader_module(ShaderModuleDescriptor {
-                    label: None,
-                    source: wgpu::ShaderSource::Wgsl(String::from_utf8_lossy(code.as_slice())),
-                });
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let new_shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(String::from_utf8_lossy(code.as_slice())),
+        });
+        let result = device.pop_error_scope();
+        match block_on(result) {
+            Some(err) => Err(err.to_string()),
+            None => {
                 pass.reload(device, config, index, new_shader);
                 Ok(())
             }
-            Err(e) => Err(e.to_string()),
         }
     }
 
