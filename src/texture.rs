@@ -46,6 +46,7 @@ impl Texture {
             wgpu::TextureFormat::Rgba8Unorm => 4,
             wgpu::TextureFormat::Rgba16Float => 8,
             wgpu::TextureFormat::Rgba32Float => 16,
+            wgpu::TextureFormat::Rg16Float => 4,
             _ => panic!("Unsupported format: {:?}", format),
         };
 

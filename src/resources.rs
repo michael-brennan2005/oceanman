@@ -39,10 +39,12 @@ impl SceneUniformData {
     pub fn new_from_camera(camera: &Camera) -> Self {
         let perspective = Mat4::perspective_lh(45.0_f32.to_radians(), 1600.0 / 900.0, 0.01, 100.0);
         let (view, camera_position) = camera.build_uniforms();
+
+        let inverse_perspective_view = (perspective * view).inverse();
         Self {
             perspective,
             view,
-            inverse_perspective_view: (perspective * view).inverse(),
+            inverse_perspective_view,
             camera_position,
         }
     }

@@ -58,8 +58,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 struct FragmentOutput {
 	@location(0) albedo: vec4<f32>,
 	@location(1) normal: vec4<f32>,
-	@location(2) material: vec4<f32>
+	@location(2) material: vec4<f32>,
 }
+
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {

@@ -10,7 +10,7 @@ use crate::{
     camera::{Camera, CameraController, FlyingCamera},
     gbuffers::GBuffers,
     loader::Scene,
-    passes::{self, Compose, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers},
+    passes::{self, Compose, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers, SSAO},
     resources::SceneUniformData,
     texture::Texture,
     RendererConfig,
@@ -40,6 +40,7 @@ pub struct Renderer {
     compose: passes::Compose,
     skybox: passes::Skybox,
     tonemapping: passes::Tonemapping,
+    ssao: passes::SSAO,
     egui: egui_wgpu::Renderer,
     egui_state: RendererUIState,
 }
@@ -118,6 +119,7 @@ impl Renderer {
         let compose = passes::Compose::new(&device, &queue, &renderer_config);
         let skybox = passes::Skybox::new(&device, &queue, &renderer_config);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
+        let ssao = passes::SSAO::new(&device, &queue, &gbuffers);
         let egui = egui_wgpu::renderer::Renderer::new(&device, config.format, None, 1);
 
         Self {
@@ -134,6 +136,7 @@ impl Renderer {
             compose,
             skybox,
             tonemapping,
+            ssao,
             egui,
             egui_state: Default::default(),
         }
@@ -211,6 +214,7 @@ impl Renderer {
                 shaders_helper!(ui, compose, Compose);
                 shaders_helper!(ui, skybox, Skybox);
                 shaders_helper!(ui, tonemapping, Tonemapping);
+                shaders_helper!(ui, ssao, SSAO);
             });
 
             ui.label(
@@ -314,6 +318,8 @@ impl Renderer {
             &mut encoder,
         );
         self.tonemapping.pass(&view, &mut encoder);
+        self.ssao
+            .pass(&self.scene, &self.gbuffers.occlusion.view, &mut encoder);
         // TODO: put into its own pass/make nicer
         for delta in &egui_textures_delta.set {
             self.egui

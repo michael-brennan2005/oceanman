@@ -11,6 +11,8 @@ pub struct GBuffers {
     pub normal: Texture,
     /// Material of fragment, RGBA8
     pub material: Texture,
+    /// Occlusion factor of fragment, RBGA16Float
+    pub occlusion: Texture,
 
     pub bind_group: wgpu::BindGroup,
 }
@@ -46,6 +48,15 @@ impl GBuffers {
             Some("Gbuffers - material"),
         );
 
+        let occlusion = Texture::new(
+            device,
+            config.width,
+            config.height,
+            wgpu::TextureFormat::Rgba16Float,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            Some("Gbuffers - AO"),
+        );
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compose - gbuffers bind group"),
             layout: &GBuffers::bind_group_layout(device),
@@ -66,6 +77,10 @@ impl GBuffers {
                     binding: 3,
                     resource: wgpu::BindingResource::TextureView(&material.view),
                 },
+                BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&occlusion.view),
+                },
             ],
         });
 
@@ -74,6 +89,7 @@ impl GBuffers {
             albedo,
             normal,
             material,
+            occlusion,
             bind_group,
         }
     }
@@ -114,6 +130,16 @@ impl GBuffers {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },

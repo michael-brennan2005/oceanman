@@ -1,10 +1,12 @@
 mod compose;
 mod skybox;
+mod ssao;
 mod tonemapping;
 mod write_gbuffers;
 
 pub use compose::Compose;
 pub use skybox::Skybox;
+pub use ssao::SSAO;
 pub use tonemapping::Tonemapping;
 use wgpu::Device;
 pub use write_gbuffers::WriteGBuffers;
