@@ -11,7 +11,7 @@ glam = "0.24.0"
 env_logger = "0.10.0"
 log = "0.4.19"
 pollster = "0.3.0"
-wgpu = "0.16.1"
+wgpu = { git = "https://github.com/wicast/wgpu.git", branch = "shader_debug_flag" } # "0.16.1"
 winit = "0.28.6"
 image = "0.24.6"
 serde = { version = "1.0.164", features = [ "derive" ] }
@@ -21,8 +21,8 @@ mikktspace = "0.3.0"
 ddsfile = "0.5.1"
 half = { version = "2.3.1", features = [ "bytemuck" ] }
 clap = { version = "4.3.19", features = ["derive"] }
-egui-wgpu = "0.22.0"
-egui-winit = "0.22.0"
+egui-wgpu = { path = "egui-wgpu" }
+egui-winit = "0.22.0" # { path = "./egui-winit"}
 egui = "0.22.0"
 rfd = "0.11.4"
 rand = "0.8.5"

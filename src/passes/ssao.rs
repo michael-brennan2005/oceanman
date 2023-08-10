@@ -73,7 +73,7 @@ impl SSAO {
     }
 
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, gbuffers: &GBuffers) -> Self {
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/ssao.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/ssao.wgsl", true));
         let pipeline = SSAO::pipeline(device, &shader);
 
         let sample_kernel_data = SSAO::sample_kernel_16x1();
@@ -238,6 +238,8 @@ impl SSAO {
                     },
                 })],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&self.pipeline);

@@ -206,7 +206,8 @@ impl Compose {
         renderer_config: &RendererConfig,
     ) -> Self {
         let ibl = IBL::new(device, queue, renderer_config);
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/compose.wgsl"));
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../shaders/compose.wgsl", true));
         let pipeline = Compose::pipeline(device, &shader);
         Self { ibl, pipeline }
     }
@@ -278,6 +279,8 @@ impl Compose {
                     },
                 })],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&self.pipeline);

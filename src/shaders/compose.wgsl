@@ -122,9 +122,9 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	
 	let bufferSize = textureDimensions(depth_gb);
 	let coordUV = position.xy / vec2<f32>(bufferSize);
-	let position = screen_to_world_coord(coordUV, depth);
+	let world_position = screen_to_world_coord(coordUV, depth);
 
-	let v = normalize(scene.camera_pos.xyz - position);
+	let v = normalize(scene.camera_pos.xyz - world_position);
 	let n = normal;
 	
 	var f0 = vec3<f32>(0.04, 0.04, 0.04);
@@ -132,10 +132,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	
 	var l0 = vec3<f32>(0.0, 0.0, 0.0);
 	for (var i: u32 = 0u; i < lighting.count; i++) {
-		let l = normalize(lighting.positions[i].xyz - position);
+		let l = normalize(lighting.positions[i].xyz - world_position);
 		let h = normalize(v + l);
 
-		let distance = length(lighting.positions[i].xyz - position);
+		let distance = length(lighting.positions[i].xyz - world_position);
 		let attenuation = 1.0 / (distance * distance);
 		let radiance = lighting.colors[i].rgb * attenuation;
 

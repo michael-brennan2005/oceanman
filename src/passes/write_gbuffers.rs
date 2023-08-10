@@ -19,8 +19,8 @@ pub struct WriteGBuffers {
 
 impl WriteGBuffers {
     pub fn new(device: &wgpu::Device) -> Self {
-        let shader =
-            device.create_shader_module(wgpu::include_wgsl!("../shaders/write_gbuffers.wgsl"));
+        let shader = device
+            .create_shader_module(wgpu::include_wgsl!("../shaders/write_gbuffers.wgsl", true));
 
         let pipeline = WriteGBuffers::pipeline(device, &shader);
         Self { pipeline }
@@ -130,6 +130,8 @@ impl WriteGBuffers {
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&self.pipeline);

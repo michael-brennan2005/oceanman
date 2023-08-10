@@ -32,7 +32,8 @@ impl Skybox {
         let cubemap_sampler = Sampler::cubemap_sampler(device);
 
         let cubemap_bind_group_layout = Skybox::cubemap_bind_group_layout(device);
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/skybox.wgsl"));
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../shaders/skybox.wgsl", true));
         let pipeline = Skybox::pipeline(device, &shader);
 
         let cubemap_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -189,6 +190,8 @@ impl Skybox {
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&self.pipeline);

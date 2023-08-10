@@ -19,7 +19,7 @@ impl Tonemapping {
         texture: &Texture,
     ) -> Self {
         let shader =
-            device.create_shader_module(wgpu::include_wgsl!("../shaders/tonemapping.wgsl"));
+            device.create_shader_module(wgpu::include_wgsl!("../shaders/tonemapping.wgsl", true));
 
         let texture_bind_group_layout = Tonemapping::texture_bind_group_layout(device);
         let pipeline = Tonemapping::pipeline(device, config, &shader);
@@ -115,6 +115,8 @@ impl Tonemapping {
                     },
                 })],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             pass.set_pipeline(&self.pipeline);

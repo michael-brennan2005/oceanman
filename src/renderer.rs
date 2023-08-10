@@ -50,7 +50,7 @@ impl Renderer {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::DX12,
+            backends: wgpu::Backends::VULKAN,
             dx12_shader_compiler: Default::default(),
         });
 
@@ -168,6 +168,7 @@ impl Renderer {
         let new_shader = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(String::from_utf8_lossy(code.as_slice())),
+            debug: true,
         });
         let result = device.pop_error_scope();
         match block_on(result) {
@@ -344,6 +345,8 @@ impl Renderer {
                     },
                 })],
                 depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
 
             self.egui.render(
