@@ -319,8 +319,7 @@ impl Renderer {
             &mut encoder,
         );
         self.tonemapping.pass(&view, &mut encoder);
-        self.ssao
-            .pass(&self.scene, &self.gbuffers.occlusion.view, &mut encoder);
+        //        self.ssao.pass(&self.scene, &self.gbuffers.occlusion.view, &mut encoder);
         // TODO: put into its own pass/make nicer
         for delta in &egui_textures_delta.set {
             self.egui

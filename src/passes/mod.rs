@@ -3,6 +3,7 @@ mod skybox;
 mod ssao;
 mod tonemapping;
 mod write_gbuffers;
+mod write_shadowmaps;
 
 pub use compose::Compose;
 pub use skybox::Skybox;
