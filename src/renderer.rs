@@ -2,6 +2,7 @@ use std::{fs, path::Path, time::Duration};
 
 use egui::{ClippedPrimitive, Color32, TexturesDelta};
 use egui_wgpu::renderer::ScreenDescriptor;
+use glam::vec3;
 use pollster::block_on;
 use wgpu::{RenderPassDescriptor, ShaderModuleDescriptor, TextureUsages};
 use winit::{event::WindowEvent, window::Window};
@@ -10,8 +11,12 @@ use crate::{
     camera::{Camera, CameraController, FlyingCamera},
     gbuffers::GBuffers,
     loader::Scene,
-    passes::{self, Compose, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers, SSAO},
+    passes::{
+        self, Compose, ReloadableShaders, ShadowUniformData, Skybox, Tonemapping, WriteGBuffers,
+        SSAO,
+    },
     resources::SceneUniformData,
+    shadowmap::Shadowmap,
     texture::Texture,
     RendererConfig,
 };
@@ -23,20 +28,29 @@ pub struct RendererUIState {
 }
 
 pub struct Renderer {
+    // wgpu internals
     surface: wgpu::Surface,
     config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
     queue: wgpu::Queue,
 
+    // camera
     camera: Camera,
     camera_controller: Box<dyn CameraController>,
 
+    // resources used by multiple passes
     scene: Scene,
     gbuffers: GBuffers,
-
+    shadowmap: Shadowmap,
     compose_output: Texture,
 
+    // shadow debugging/control
+    shadow_theta: f32,
+    shadow_phi: f32,
+
+    // passes
     write_gbuffers: passes::WriteGBuffers,
+    write_shadowmaps: passes::WriteShadowmaps,
     compose: passes::Compose,
     skybox: passes::Skybox,
     tonemapping: passes::Tonemapping,
@@ -46,7 +60,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub async fn new(window: &Window, renderer_config: &RendererConfig) -> Self {
+    pub fn new(window: &Window, renderer_config: &RendererConfig) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -56,26 +70,22 @@ impl Renderer {
 
         let surface = unsafe { instance.create_surface(window) }.unwrap();
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
+        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
 
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Device"),
-                    features: wgpu::Features::TIMESTAMP_QUERY,
-                    limits: wgpu::Limits::default(),
-                },
-                None,
-            )
-            .await
-            .unwrap();
+        let (device, queue) = block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("Device"),
+                features: wgpu::Features::TIMESTAMP_QUERY,
+                limits: wgpu::Limits::default(),
+            },
+            None,
+        ))
+        .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
 
@@ -106,6 +116,9 @@ impl Renderer {
             None => Scene::new(&device),
         };
         let gbuffers = GBuffers::new(&device, &config);
+        let shadowmap = Shadowmap::new(&device, &config);
+        let shadow_theta = 0.0;
+        let shadow_phi = 0.0;
         let compose_output = Texture::new(
             &device,
             config.width,
@@ -116,6 +129,11 @@ impl Renderer {
         );
 
         let write_gbuffers = passes::WriteGBuffers::new(&device);
+        let write_shadowmaps = passes::WriteShadowmaps::new(
+            &device,
+            &queue,
+            ShadowUniformData::new(vec3(0.0, 0.0, 0.0), 0.0, 0.0),
+        );
         let compose = passes::Compose::new(&device, &queue, &renderer_config);
         let skybox = passes::Skybox::new(&device, &queue, &renderer_config);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
@@ -131,12 +149,16 @@ impl Renderer {
             camera_controller,
             scene,
             gbuffers,
+            shadowmap,
+            shadow_theta,
+            shadow_phi,
             compose_output,
             write_gbuffers,
             compose,
             skybox,
             tonemapping,
             ssao,
+            write_shadowmaps,
             egui,
             egui_state: Default::default(),
         }
@@ -151,6 +173,14 @@ impl Renderer {
         self.scene
             .scene
             .update(&self.queue, SceneUniformData::new_from_camera(&self.camera));
+        self.write_shadowmaps.update_shadow_uniform(
+            &self.queue,
+            ShadowUniformData::new(
+                self.camera.eye,
+                self.shadow_theta.to_radians(),
+                self.shadow_phi.to_radians(),
+            ),
+        );
     }
 
     // TODO: seems fragile?
@@ -284,6 +314,20 @@ impl Renderer {
                     );
                 }
             }
+        });
+
+        egui::Window::new("Shadows").show(ctx, |ui| {
+            ui.add(
+                egui::Slider::new(&mut self.shadow_theta, 0.0..=360.0)
+                    .text("Theta")
+                    .show_value(true),
+            );
+
+            ui.add(
+                egui::Slider::new(&mut self.shadow_phi, 0.0..=360.0)
+                    .text("Phi")
+                    .show_value(true),
+            );
         });
     }
 

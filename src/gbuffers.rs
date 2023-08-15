@@ -4,16 +4,23 @@ use crate::texture::Texture;
 
 pub struct GBuffers {
     /// Depth buffer (used to calculate world position), Depth24Plus
+    /// Written to in WriteGBuffers pass
     pub depth: Texture,
     /// Albedo of fragment, RGBA8
+    /// Written to in WriteGBuffers pass
     pub albedo: Texture,
     /// Normal of fragment (world space), RGBA8
+    /// Written to in WriteGBuffers pass
     pub normal: Texture,
     /// Material of fragment, RGBA8
+    /// Written to in WriteGBuffers pass
     pub material: Texture,
     /// Occlusion factor of fragment, RBGA16Float
+    /// Written to in SSAO pass
     pub occlusion: Texture,
-
+    /// Shadow buffer of fragment, R16Float
+    /// Written to in WriteShadowmaps pass
+    pub shadow: Texture,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -57,6 +64,15 @@ impl GBuffers {
             Some("Gbuffers - AO"),
         );
 
+        let shadow = Texture::new(
+            device,
+            config.width,
+            config.height,
+            wgpu::TextureFormat::R16Float,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            Some("Gbuffers - Shadow"),
+        );
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compose - gbuffers bind group"),
             layout: &GBuffers::bind_group_layout(device),
@@ -81,6 +97,10 @@ impl GBuffers {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(&occlusion.view),
                 },
+                BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&shadow.view),
+                },
             ],
         });
 
@@ -90,6 +110,7 @@ impl GBuffers {
             normal,
             material,
             occlusion,
+            shadow,
             bind_group,
         }
     }
@@ -140,6 +161,16 @@ impl GBuffers {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },

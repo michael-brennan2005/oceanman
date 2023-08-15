@@ -11,6 +11,8 @@ pub use ssao::SSAO;
 pub use tonemapping::Tonemapping;
 use wgpu::Device;
 pub use write_gbuffers::WriteGBuffers;
+pub use write_shadowmaps::ShadowUniformData;
+pub use write_shadowmaps::WriteShadowmaps;
 
 // TODO: gut instinct says this could be done better
 pub trait ReloadableShaders {

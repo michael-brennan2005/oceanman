@@ -16,6 +16,7 @@ mod loader;
 mod passes;
 mod renderer;
 mod resources;
+mod shadowmap;
 mod spring;
 mod tangent_generation;
 mod texture;
@@ -56,7 +57,7 @@ pub async fn run() {
         size_in_pixels: [1600, 900],
         pixels_per_point: window.scale_factor() as f32,
     };
-    let mut app = Renderer::new(&window, &args).await;
+    let mut app = Renderer::new(&window, &args);
     let mut last_render_time = Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
