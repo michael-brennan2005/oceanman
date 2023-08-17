@@ -43,7 +43,7 @@ impl Camera {
 pub trait CameraController {
     fn input(&mut self, event: &WindowEvent);
     fn update(&mut self, camera: &mut Camera, dt: Duration);
-    fn ui(&mut self, camera: &mut Camera, ctx: &egui::Context) {}
+    fn ui(&mut self, camera: &mut Camera, ui: &mut egui::Ui) {}
 }
 
 pub struct FlyingCamera {
@@ -182,8 +182,8 @@ impl CameraController for FlyingCamera {
             * dt_seconds;
     }
 
-    fn ui(&mut self, camera: &mut Camera, ctx: &egui::Context) {
-        egui::Window::new("Camera").show(ctx, |ui| {
+    fn ui(&mut self, camera: &mut Camera, ui: &mut egui::Ui) {
+        egui::CollapsingHeader::new("Camera").show(ui, |ui| {
             ui.label(format!(
                 "Position: {:.3} {:.3} {:.3}\nYaw: {:.3}\nPitch: {:.3}",
                 camera.eye.x, camera.eye.y, camera.eye.z, self.yaw, self.pitch

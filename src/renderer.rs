@@ -2,7 +2,6 @@ use std::{fs, path::Path, time::Duration};
 
 use egui::{ClippedPrimitive, Color32, TexturesDelta};
 use egui_wgpu::renderer::ScreenDescriptor;
-use glam::vec3;
 use pollster::block_on;
 use wgpu::{RenderPassDescriptor, ShaderModuleDescriptor, TextureUsages};
 use winit::{event::WindowEvent, window::Window};
@@ -11,12 +10,9 @@ use crate::{
     camera::{Camera, CameraController, FlyingCamera},
     gbuffers::GBuffers,
     loader::Scene,
-    passes::{
-        self, Compose, ReloadableShaders, ShadowUniformData, Skybox, Tonemapping, WriteGBuffers,
-        SSAO,
-    },
+    passes::{self, Compose, FxaaParams, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers},
     resources::SceneUniformData,
-    shadowmap::Shadowmap,
+    shadowmap::{ShadowData, Shadows},
     texture::Texture,
     RendererConfig,
 };
@@ -25,6 +21,14 @@ use crate::{
 pub struct RendererUIState {
     shader_error_message: String,
     loader_error_message: String,
+
+    // Debugging shadows
+    shadow_theta: f32,
+    shadow_phi: f32,
+    shadow_dist: f32,
+
+    fxaa_enabled: bool,
+    fxaa_params: FxaaParams,
 }
 
 pub struct Renderer {
@@ -41,20 +45,16 @@ pub struct Renderer {
     // resources used by multiple passes
     scene: Scene,
     gbuffers: GBuffers,
-    shadowmap: Shadowmap,
+    shadows: Shadows,
     compose_output: Texture,
-
-    // shadow debugging/control
-    shadow_theta: f32,
-    shadow_phi: f32,
+    tonemapping_output: Texture,
 
     // passes
     write_gbuffers: passes::WriteGBuffers,
-    write_shadowmaps: passes::WriteShadowmaps,
     compose: passes::Compose,
     skybox: passes::Skybox,
     tonemapping: passes::Tonemapping,
-    ssao: passes::SSAO,
+    fxaa: passes::Fxaa,
     egui: egui_wgpu::Renderer,
     egui_state: RendererUIState,
 }
@@ -64,7 +64,7 @@ impl Renderer {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN,
+            backends: wgpu::Backends::DX12,
             dx12_shader_compiler: Default::default(),
         });
 
@@ -116,9 +116,7 @@ impl Renderer {
             None => Scene::new(&device),
         };
         let gbuffers = GBuffers::new(&device, &config);
-        let shadowmap = Shadowmap::new(&device, &config);
-        let shadow_theta = 0.0;
-        let shadow_phi = 0.0;
+        let shadows = Shadows::new(&device, &config);
         let compose_output = Texture::new(
             &device,
             config.width,
@@ -126,18 +124,23 @@ impl Renderer {
             wgpu::TextureFormat::Rgba16Float,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Compose output/Tonemapping input"),
+            false,
+        );
+        let tonemapping_output = Texture::new(
+            &device,
+            config.width,
+            config.height,
+            config.format,
+            TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            Some("Tonemapping out/Fxaa input"),
+            false,
         );
 
         let write_gbuffers = passes::WriteGBuffers::new(&device);
-        let write_shadowmaps = passes::WriteShadowmaps::new(
-            &device,
-            &queue,
-            ShadowUniformData::new(vec3(0.0, 0.0, 0.0), 0.0, 0.0),
-        );
         let compose = passes::Compose::new(&device, &queue, &renderer_config);
         let skybox = passes::Skybox::new(&device, &queue, &renderer_config);
         let tonemapping = passes::Tonemapping::new(&device, &config, &compose_output);
-        let ssao = passes::SSAO::new(&device, &queue, &gbuffers);
+        let fxaa = passes::Fxaa::new(&device, &config, &tonemapping_output);
         let egui = egui_wgpu::renderer::Renderer::new(&device, config.format, None, 1);
 
         Self {
@@ -149,17 +152,15 @@ impl Renderer {
             camera_controller,
             scene,
             gbuffers,
-            shadowmap,
-            shadow_theta,
-            shadow_phi,
+            shadows,
             compose_output,
             write_gbuffers,
             compose,
             skybox,
             tonemapping,
-            ssao,
-            write_shadowmaps,
+            tonemapping_output,
             egui,
+            fxaa,
             egui_state: Default::default(),
         }
     }
@@ -173,12 +174,13 @@ impl Renderer {
         self.scene
             .scene
             .update(&self.queue, SceneUniformData::new_from_camera(&self.camera));
-        self.write_shadowmaps.update_shadow_uniform(
+        self.shadows.update_uniform(
             &self.queue,
-            ShadowUniformData::new(
+            ShadowData::new(
                 self.camera.eye,
-                self.shadow_theta.to_radians(),
-                self.shadow_phi.to_radians(),
+                self.egui_state.shadow_dist,
+                self.egui_state.shadow_theta.to_radians(),
+                self.egui_state.shadow_phi.to_radians(),
             ),
         );
     }
@@ -211,123 +213,130 @@ impl Renderer {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
-        self.camera_controller.ui(&mut self.camera, ctx);
-        // omfg are you fr
-        macro_rules! shaders_helper {
-            ($ui:ident, $lowercase:ident, $uppercase:ident) => {
-                $ui.label(egui::RichText::new(stringify!($uppercase)).strong());
-                $ui.end_row();
-
-                let available_shaders: &[&str] = $uppercase::available_shaders();
-
-                for i in available_shaders.iter().enumerate() {
-                    $ui.label(*i.1);
-                    if $ui.button("Reload").clicked() {
-                        let error_message = Renderer::reload_shader(
-                            &self.device,
-                            &self.config,
-                            &mut self.$lowercase,
-                            i.0,
-                            *i.1,
-                        );
-                        self.egui_state.shader_error_message = match error_message {
-                            Ok(_) => String::from(""),
-                            Err(x) => x,
-                        }
-                    }
+        egui::Window::new("Renderer").show(ctx, |ui| {
+            self.camera_controller.ui(&mut self.camera, ui);
+            // omfg are you fr
+            macro_rules! shaders_helper {
+                ($ui:ident, $lowercase:ident, $uppercase:ident) => {
+                    $ui.label(egui::RichText::new(stringify!($uppercase)).strong());
                     $ui.end_row();
-                }
-            };
-        }
-        egui::Window::new("Shaders").show(ctx, |ui| {
-            egui::Grid::new("shaders").show(ui, |ui| {
-                shaders_helper!(ui, write_gbuffers, WriteGBuffers);
-                shaders_helper!(ui, compose, Compose);
-                shaders_helper!(ui, skybox, Skybox);
-                shaders_helper!(ui, tonemapping, Tonemapping);
-                shaders_helper!(ui, ssao, SSAO);
+
+                    let available_shaders: &[&str] = $uppercase::available_shaders();
+
+                    for i in available_shaders.iter().enumerate() {
+                        $ui.label(*i.1);
+                        if $ui.button("Reload").clicked() {
+                            let error_message = Renderer::reload_shader(
+                                &self.device,
+                                &self.config,
+                                &mut self.$lowercase,
+                                i.0,
+                                *i.1,
+                            );
+                            self.egui_state.shader_error_message = match error_message {
+                                Ok(_) => String::from(""),
+                                Err(x) => x,
+                            }
+                        }
+                        $ui.end_row();
+                    }
+                };
+            }
+            egui::CollapsingHeader::new("Shaders").show(ui, |ui| {
+                egui::Grid::new("shaders").show(ui, |ui| {
+                    shaders_helper!(ui, write_gbuffers, WriteGBuffers);
+                    shaders_helper!(ui, compose, Compose);
+                    shaders_helper!(ui, skybox, Skybox);
+                    shaders_helper!(ui, tonemapping, Tonemapping);
+                });
+
+                ui.label(
+                    egui::RichText::new(&self.egui_state.shader_error_message).color(Color32::RED),
+                );
             });
 
-            ui.label(
-                egui::RichText::new(&self.egui_state.shader_error_message).color(Color32::RED),
-            );
-        });
-
-        egui::Window::new("Loader").show(ctx, |ui| {
-            if ui.button("Load glTF").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("glTF", &["gltf", "glb"])
-                    .pick_file()
-                {
-                    let scene = Scene::from_gltf(
-                        &self.device,
-                        &self.queue,
-                        &String::from(path.to_str().unwrap()),
-                    );
-                    match scene {
-                        Ok(_) => self.scene = scene.unwrap(),
-                        Err(_) => {
-                            self.egui_state.loader_error_message =
-                                String::from("Failed to load glTF.")
+            egui::CollapsingHeader::new("Loader").show(ui, |ui| {
+                if ui.button("Load glTF").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("glTF", &["gltf", "glb"])
+                        .pick_file()
+                    {
+                        let scene = Scene::from_gltf(
+                            &self.device,
+                            &self.queue,
+                            &String::from(path.to_str().unwrap()),
+                        );
+                        match scene {
+                            Ok(_) => self.scene = scene.unwrap(),
+                            Err(_) => {
+                                self.egui_state.loader_error_message =
+                                    String::from("Failed to load glTF.")
+                            }
                         }
                     }
                 }
-            }
 
-            if ui.button("Load skybox").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("dds", &["dds"])
-                    .pick_file()
-                {
-                    self.skybox.update_cubemap(
-                        &self.device,
-                        &self.queue,
-                        &String::from(path.to_str().unwrap()),
-                    );
+                if ui.button("Load skybox").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("dds", &["dds"])
+                        .pick_file()
+                    {
+                        self.skybox.update_cubemap(
+                            &self.device,
+                            &self.queue,
+                            &String::from(path.to_str().unwrap()),
+                        );
+                    }
                 }
-            }
 
-            if ui.button("Load irradiance (diffuse)").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("dds", &["dds"])
-                    .pick_file()
-                {
-                    self.compose.ibl.update(
-                        &self.device,
-                        &self.queue,
-                        Some(&String::from(path.to_str().unwrap())),
-                        None,
-                    );
+                if ui.button("Load irradiance (diffuse)").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("dds", &["dds"])
+                        .pick_file()
+                    {
+                        self.compose.ibl.update(
+                            &self.device,
+                            &self.queue,
+                            Some(&String::from(path.to_str().unwrap())),
+                            None,
+                        );
+                    }
                 }
-            }
 
-            if ui.button("Load prefilter (specular)").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("dds", &["dds"])
-                    .pick_file()
-                {
-                    self.compose.ibl.update(
-                        &self.device,
-                        &self.queue,
-                        None,
-                        Some(&String::from(path.to_str().unwrap())),
-                    );
+                if ui.button("Load prefilter (specular)").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("dds", &["dds"])
+                        .pick_file()
+                    {
+                        self.compose.ibl.update(
+                            &self.device,
+                            &self.queue,
+                            None,
+                            Some(&String::from(path.to_str().unwrap())),
+                        );
+                    }
                 }
-            }
-        });
+            });
 
-        egui::Window::new("Shadows").show(ctx, |ui| {
-            ui.add(
-                egui::Slider::new(&mut self.shadow_theta, 0.0..=360.0)
-                    .text("Theta")
-                    .show_value(true),
-            );
+            egui::CollapsingHeader::new("Shadows").show(ui, |ui| {
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.shadow_theta, 0.0..=360.0)
+                        .text("Theta")
+                        .show_value(true),
+                );
 
-            ui.add(
-                egui::Slider::new(&mut self.shadow_phi, 0.0..=360.0)
-                    .text("Phi")
-                    .show_value(true),
-            );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.shadow_phi, 0.0..=360.0)
+                        .text("Phi")
+                        .show_value(true),
+                );
+
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.shadow_dist, 0.0..=360.0)
+                        .text("Distance")
+                        .show_value(true),
+                );
+            });
         });
     }
 
@@ -362,8 +371,9 @@ impl Renderer {
             &self.gbuffers.depth.view,
             &mut encoder,
         );
-        self.tonemapping.pass(&view, &mut encoder);
-        //        self.ssao.pass(&self.scene, &self.gbuffers.occlusion.view, &mut encoder);
+        self.tonemapping
+            .pass(&self.tonemapping_output.view, &mut encoder);
+        self.fxaa.pass(&view, &mut encoder);
         // TODO: put into its own pass/make nicer
         for delta in &egui_textures_delta.set {
             self.egui

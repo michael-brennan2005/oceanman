@@ -2,122 +2,32 @@ use std::num::NonZeroU64;
 
 use glam::{vec3, Mat4, Vec3};
 use wgpu::{
-    include_wgsl,
-    util::{BufferInitDescriptor, DeviceExt},
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, BufferUsages, Device, FragmentState, MultisampleState,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPipeline, ShaderModule, ShaderStages,
-    VertexState,
+    include_wgsl, Device, MultisampleState, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPipeline, ShaderModule, VertexState,
 };
 
 use crate::{
     bytemuck_impl,
     common::VertexAttributes,
     loader::Scene,
-    resources::{Mesh, SceneUniformData},
-    shadowmap::Shadowmap,
+    resources::Mesh,
+    shadowmap::{ShadowData, Shadowmap, Shadows},
     texture::Texture,
+    uniform::Uniform,
 };
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct ShadowUniformData {
-    pub projection: Mat4,
-}
-bytemuck_impl!(ShadowUniformData);
-
-impl ShadowUniformData {
-    /// pos should be camera pos, theta and phi are where direcitonal light originates from,
-    /// looking from center of unit sphere.
-    pub fn new(pos: Vec3, theta: f32, phi: f32) -> Self {
-        let dir = -vec3(
-            f32::sin(phi) * f32::cos(theta),
-            f32::sin(phi) * f32::sin(theta),
-            f32::cos(phi),
-        );
-
-        let right = vec3(f32::sin(theta), f32::cos(theta), 0.0);
-        let up = right.cross(dir);
-
-        let eye = pos + (-dir * 50.0);
-
-        let view = Mat4::look_to_lh(eye, dir, up);
-        let perspecitve = Mat4::orthographic_lh(-25.0, 25.0, -25.0, 25.0, 0.0, 100.0);
-        Self {
-            projection: perspecitve * view,
-        }
-    }
-}
-
-pub struct ShadowUniform {
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-}
-
-impl ShadowUniform {
-    pub fn new(device: &Device, queue: &Queue, data: ShadowUniformData) -> Self {
-        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Shadow uniform"),
-            contents: bytemuck::cast_slice(&[data]),
-            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
-        });
-
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("Shadow uniform bind group"),
-            layout: &ShadowUniform::bind_group_layout(device),
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-
-        Self { buffer, bind_group }
-    }
-
-    pub fn update(&self, queue: &Queue, data: ShadowUniformData) {
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[data]));
-    }
-
-    pub fn bind_group_layout(device: &Device) -> BindGroupLayout {
-        device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: NonZeroU64::new(
-                        std::mem::size_of::<ShadowUniformData>() as u64
-                    ),
-                },
-                count: None,
-            }],
-        })
-    }
-}
 
 pub struct WriteShadowmaps {
     pipeline: wgpu::RenderPipeline,
-    shadow_uniform: ShadowUniform,
 }
 
 impl WriteShadowmaps {
-    pub fn new(device: &Device, queue: &Queue, data: ShadowUniformData) -> Self {
+    pub fn new(device: &Device, queue: &Queue, data: ShadowData) -> Self {
         let shader =
             device.create_shader_module(include_wgsl!("../shaders/write_shadowmaps.wgsl", true));
 
-        let shadow_uniform = ShadowUniform::new(device, queue, data);
         let pipeline = WriteShadowmaps::pipeline(device, &shader);
 
-        Self {
-            pipeline,
-            shadow_uniform,
-        }
-    }
-
-    pub fn update_shadow_uniform(&self, queue: &Queue, data: ShadowUniformData) {
-        self.shadow_uniform.update(queue, data);
+        Self { pipeline }
     }
 
     pub fn pipeline(device: &wgpu::Device, shader: &ShaderModule) -> RenderPipeline {
@@ -127,7 +37,7 @@ impl WriteShadowmaps {
             layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Write shadowmaps pipeline layout"),
                 bind_group_layouts: &[
-                    &ShadowUniform::bind_group_layout(device),
+                    &Uniform::<ShadowData>::bind_group_layout(device),
                     &Mesh::bind_group_layout(device),
                 ],
                 push_constant_ranges: &[],
@@ -164,13 +74,13 @@ impl WriteShadowmaps {
         })
     }
 
-    pub fn pass(&self, scene: &Scene, shadowmap: &Shadowmap, encoder: &mut wgpu::CommandEncoder) {
+    pub fn pass(&self, scene: &Scene, shadows: &Shadows, encoder: &mut wgpu::CommandEncoder) {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Write Shadowmaps pass"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &shadowmap.texture.view,
+                    view: &shadows.shadowmap.texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
@@ -182,7 +92,7 @@ impl WriteShadowmaps {
             });
 
             pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.shadow_uniform.bind_group, &[]);
+            pass.set_bind_group(0, &shadows.uniform.bind_group, &[]);
 
             for mesh in &scene.meshes {
                 pass.set_bind_group(1, &mesh.bind_group, &[]);

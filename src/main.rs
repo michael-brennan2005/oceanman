@@ -20,6 +20,8 @@ mod shadowmap;
 mod spring;
 mod tangent_generation;
 mod texture;
+mod texture_debug;
+mod uniform;
 
 use renderer::Renderer;
 

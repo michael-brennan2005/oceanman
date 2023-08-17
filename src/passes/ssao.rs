@@ -86,6 +86,7 @@ impl SSAO {
             TextureFormat::Rgba16Float,
             TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             Some("Sample kernel (16x1)"),
+            false,
         );
 
         let random_noise_data = SSAO::random_noise_16x1();
@@ -98,6 +99,7 @@ impl SSAO {
             TextureFormat::Rgba16Float,
             TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             Some("Random noise (16x1)"),
+            false,
         );
 
         let textures_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

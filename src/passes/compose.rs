@@ -58,6 +58,7 @@ impl IBL {
                 TextureFormat::Rgba16Float,
                 TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                 Some("BRDF lookup"),
+                false,
             )
         };
 

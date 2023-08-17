@@ -223,6 +223,7 @@ impl Scene {
                     wgpu::TextureFormat::Rgba8UnormSrgb,
                     TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Color texture for {}", material.name().unwrap_or("")).as_str()),
+                    false,
                 )
             } else {
                 Texture::new_1x1_texture(
@@ -263,6 +264,7 @@ impl Scene {
                     wgpu::TextureFormat::Rgba8Unorm,
                     TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
                     Some(format!("Normal texture for {}", material.name().unwrap_or("")).as_str()),
+                    false,
                 )
             } else {
                 Texture::new_1x1_texture(
@@ -310,6 +312,7 @@ impl Scene {
                             )
                             .as_str(),
                         ),
+                        false,
                     )
                 } else {
                     Texture::new_1x1_texture(

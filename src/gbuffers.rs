@@ -26,7 +26,7 @@ pub struct GBuffers {
 
 impl GBuffers {
     pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
-        let depth = Texture::new_depth_texture(device, config);
+        let depth = Texture::new_depth_texture(device, config, false);
 
         let albedo = Texture::new(
             device,
@@ -35,6 +35,7 @@ impl GBuffers {
             wgpu::TextureFormat::Rgba8UnormSrgb,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - albedo"),
+            false,
         );
 
         let normal = Texture::new(
@@ -44,6 +45,7 @@ impl GBuffers {
             wgpu::TextureFormat::Rgba8Unorm,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - normal (worldspace)"),
+            false,
         );
 
         let material = Texture::new(
@@ -53,6 +55,7 @@ impl GBuffers {
             wgpu::TextureFormat::Rgba8Unorm,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - material"),
+            false,
         );
 
         let occlusion = Texture::new(
@@ -62,6 +65,7 @@ impl GBuffers {
             wgpu::TextureFormat::Rgba16Float,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - AO"),
+            false,
         );
 
         let shadow = Texture::new(
@@ -71,6 +75,7 @@ impl GBuffers {
             wgpu::TextureFormat::R16Float,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             Some("Gbuffers - Shadow"),
+            false,
         );
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

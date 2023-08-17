@@ -1,5 +1,6 @@
 struct ShadowUniforms {
-    projection: mat4x4<f32>
+    view: mat4x4<f32>,
+    perspective: mat4x4<f32>
 }
 
 @group(0) @binding(0) var<uniform> shadow: ShadowUniforms;
@@ -25,6 +26,6 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_space_position = shadow.projection * mesh.model * vec4<f32>(in.position, 1.0);
+    out.clip_space_position = shadow.perspective * shadow.view * mesh.model * vec4<f32>(in.position, 1.0);
     return out;
 }

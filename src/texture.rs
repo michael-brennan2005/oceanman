@@ -1,7 +1,10 @@
-use wgpu::{TextureFormat, TextureUsages};
+use wgpu::{
+    BindGroupEntry, BindGroupLayoutEntry, ShaderStages, TextureFormat, TextureUsages,
+    TextureViewDimension,
+};
 
 pub struct Texture {
-    pub format: wgpu::TextureFormat,
+    pub sample_type: wgpu::TextureSampleType,
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
 }
@@ -18,6 +21,7 @@ impl Texture {
         format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
         label: Option<&str>,
+        debug: bool,
     ) -> Self {
         let dimensions = (width, height);
 
@@ -33,7 +37,11 @@ impl Texture {
             dimension: wgpu::TextureDimension::D2,
             format,
             usage,
-            view_formats: &[],
+            view_formats: if debug {
+                &[TextureFormat::Rgba8UnormSrgb]
+            } else {
+                &[]
+            },
         });
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
@@ -70,10 +78,21 @@ impl Texture {
             },
         );
 
+        let sample_type = match format {
+            wgpu::TextureFormat::Rgba8UnormSrgb => {
+                wgpu::TextureSampleType::Float { filterable: true }
+            }
+            wgpu::TextureFormat::Rgba8Unorm => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rgba16Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rgba32Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rg16Float => wgpu::TextureSampleType::Float { filterable: true },
+            Texture::DEPTH_FORMAT => wgpu::TextureSampleType::Depth,
+            _ => panic!("Unsupported format: {:?}", format),
+        };
         Self {
+            sample_type,
             texture,
             view,
-            format,
         }
     }
 
@@ -84,6 +103,7 @@ impl Texture {
         format: wgpu::TextureFormat,
         usage: wgpu::TextureUsages,
         label: Option<&str>,
+        debug: bool,
     ) -> Self {
         let dimensions = (width, height);
 
@@ -99,7 +119,11 @@ impl Texture {
             dimension: wgpu::TextureDimension::D2,
             format,
             usage,
-            view_formats: &[],
+            view_formats: if debug {
+                &[TextureFormat::Rgba8UnormSrgb]
+            } else {
+                &[]
+            },
         });
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
@@ -108,10 +132,23 @@ impl Texture {
             ..Default::default()
         });
 
+        let sample_type = match format {
+            wgpu::TextureFormat::Rgba8UnormSrgb => {
+                wgpu::TextureSampleType::Float { filterable: true }
+            }
+            wgpu::TextureFormat::Rgba8Unorm => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rgba16Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rgba32Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Rg16Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::R16Float => wgpu::TextureSampleType::Float { filterable: true },
+            Texture::DEPTH_FORMAT => wgpu::TextureSampleType::Depth,
+            _ => panic!("Unsupported format: {:?}", format),
+        };
+
         Self {
+            sample_type,
             texture,
             view,
-            format,
         }
     }
 
@@ -123,10 +160,14 @@ impl Texture {
         usage: TextureUsages,
         label: Option<&str>,
     ) -> Self {
-        Texture::new_from_bytes(device, queue, data, 1, 1, format, usage, label)
+        Texture::new_from_bytes(device, queue, data, 1, 1, format, usage, label, false)
     }
 
-    pub fn new_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+    pub fn new_depth_texture(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        debug: bool,
+    ) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Depth texture"),
             size: wgpu::Extent3d {
@@ -139,15 +180,40 @@ impl Texture {
             dimension: wgpu::TextureDimension::D2,
             format: Self::DEPTH_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
+            view_formats: if debug {
+                &[TextureFormat::Rgba8UnormSrgb]
+            } else {
+                &[]
+            },
         });
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         Self {
+            sample_type: wgpu::TextureSampleType::Depth,
             texture,
             view,
-            format: Self::DEPTH_FORMAT,
+        }
+    }
+
+    pub fn bind_group_entry(&self, i: u32) -> BindGroupEntry {
+        BindGroupEntry {
+            binding: i,
+            resource: wgpu::BindingResource::TextureView(&self.view),
+        }
+    }
+
+    pub fn bind_group_layout_entry(&self, i: u32) -> BindGroupLayoutEntry {
+        BindGroupLayoutEntry {
+            binding: i,
+            // TODO: fine-grain control this?
+            visibility: ShaderStages::FRAGMENT | ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Texture {
+                sample_type: self.sample_type,
+                view_dimension: TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
         }
     }
 }
