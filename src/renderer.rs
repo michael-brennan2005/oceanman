@@ -10,7 +10,9 @@ use crate::{
     camera::{Camera, CameraController, FlyingCamera},
     gbuffers::GBuffers,
     loader::Scene,
-    passes::{self, Compose, FxaaParams, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers},
+    passes::{
+        self, Compose, Fxaa, FxaaParams, ReloadableShaders, Skybox, Tonemapping, WriteGBuffers,
+    },
     resources::SceneUniformData,
     shadowmap::{ShadowData, Shadows},
     texture::Texture,
@@ -183,6 +185,9 @@ impl Renderer {
                 self.egui_state.shadow_phi.to_radians(),
             ),
         );
+        self.fxaa
+            .uniform
+            .update(&self.queue, self.egui_state.fxaa_params);
     }
 
     // TODO: seems fragile?
@@ -248,6 +253,7 @@ impl Renderer {
                     shaders_helper!(ui, compose, Compose);
                     shaders_helper!(ui, skybox, Skybox);
                     shaders_helper!(ui, tonemapping, Tonemapping);
+                    shaders_helper!(ui, fxaa, Fxaa);
                 });
 
                 ui.label(
@@ -337,6 +343,56 @@ impl Renderer {
                         .show_value(true),
                 );
             });
+
+            egui::CollapsingHeader::new("FXAA").show(ui, |ui| {
+                ui.checkbox(&mut self.egui_state.fxaa_enabled, "FXAA");
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.edge_threshold, 0.0..=1.0)
+                        .step_by(1.0 / 16.0)
+                        .text("Edge threshold"),
+                );
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.egui_state.fxaa_params.edge_threshold_min,
+                        0.0..=1.0,
+                    )
+                    .step_by(1.0 / 32.0)
+                    .text("Edge threshold min"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix, 0.0..=2.0)
+                        .step_by(1.0)
+                        .text("Subpix filtering"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix_trim, 0.0..=1.0)
+                        .step_by(1.0 / 8.0)
+                        .text("Subpix filtering trim"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix_cap, 0.0..=1.0)
+                        .step_by(1.0 / 8.0)
+                        .text("Subpix filtering cap"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.search_steps, 0.0..=16.0)
+                        .step_by(1.0)
+                        .text("Search steps"),
+                );
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.egui_state.fxaa_params.search_acceleration,
+                        0.0..=4.0,
+                    )
+                    .step_by(1.0)
+                    .text("Search acceleration"),
+                );
+                ui.add(
+                    egui::Slider::new(&mut self.egui_state.fxaa_params.search_threshold, 0.0..=1.0)
+                        .step_by(1.0 / 16.0)
+                        .text("Search threshold"),
+                );
+            })
         });
     }
 
@@ -371,9 +427,15 @@ impl Renderer {
             &self.gbuffers.depth.view,
             &mut encoder,
         );
-        self.tonemapping
-            .pass(&self.tonemapping_output.view, &mut encoder);
-        self.fxaa.pass(&view, &mut encoder);
+
+        if self.egui_state.fxaa_enabled {
+            self.tonemapping
+                .pass(&self.tonemapping_output.view, &mut encoder);
+            self.fxaa.pass(&view, &mut encoder);
+        } else {
+            self.tonemapping.pass(&view, &mut encoder);
+        }
+
         // TODO: put into its own pass/make nicer
         for delta in &egui_textures_delta.set {
             self.egui

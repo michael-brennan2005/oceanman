@@ -141,6 +141,9 @@ impl Texture {
             wgpu::TextureFormat::Rgba32Float => wgpu::TextureSampleType::Float { filterable: true },
             wgpu::TextureFormat::Rg16Float => wgpu::TextureSampleType::Float { filterable: true },
             wgpu::TextureFormat::R16Float => wgpu::TextureSampleType::Float { filterable: true },
+            wgpu::TextureFormat::Bgra8UnormSrgb => {
+                wgpu::TextureSampleType::Float { filterable: true }
+            }
             Texture::DEPTH_FORMAT => wgpu::TextureSampleType::Depth,
             _ => panic!("Unsupported format: {:?}", format),
         };
@@ -278,6 +281,25 @@ impl Sampler {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: 0.0,
             lod_max_clamp: 10.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        Self { sampler }
+    }
+
+    pub fn fxaa_sampler(device: &wgpu::Device) -> Self {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("FXAA sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
             compare: None,
             anisotropy_clamp: 1,
             border_color: None,

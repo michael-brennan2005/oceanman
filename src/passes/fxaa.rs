@@ -1,22 +1,28 @@
 use wgpu::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, FragmentState,
-    MultisampleState, PipelineLayoutDescriptor, PrimitiveState, ShaderModule, ShaderStages,
-    TextureView, TextureViewDimension, VertexState,
+    BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
+    BindingResource, FragmentState, MultisampleState, PipelineLayoutDescriptor, PrimitiveState,
+    SamplerBindingType, ShaderModule, ShaderStages, TextureView, TextureViewDimension, VertexState,
 };
 
-use crate::{bytemuck_impl, texture::Texture, uniform::Uniform};
+use crate::{
+    bytemuck_impl,
+    texture::{Sampler, Texture},
+    uniform::Uniform,
+};
+
+use super::ReloadableShaders;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct FxaaParams {
-    edge_threshold: f32,
-    edge_threshold_min: f32,
-    subpix: f32,
-    subpix_trim: f32,
-    subpix_cap: f32,
-    search_steps: f32,
-    search_acceleration: f32,
-    search_threshold: f32,
+    pub edge_threshold: f32,
+    pub edge_threshold_min: f32,
+    pub subpix: f32,
+    pub subpix_trim: f32,
+    pub subpix_cap: f32,
+    pub search_steps: f32,
+    pub search_acceleration: f32,
+    pub search_threshold: f32,
 }
 bytemuck_impl!(FxaaParams);
 
@@ -37,7 +43,8 @@ impl Default for FxaaParams {
 pub type FxaaUniform = Uniform<FxaaParams>;
 
 pub struct Fxaa {
-    uniform: FxaaUniform,
+    pub uniform: FxaaUniform,
+    sampler: Sampler,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
 }
@@ -51,6 +58,7 @@ impl Fxaa {
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/fxaa.wgsl", true));
 
         let uniform = FxaaUniform::new(device, None, FxaaParams::default());
+        let sampler = Sampler::fxaa_sampler(device);
 
         let pipeline = Fxaa::pipeline(device, config, &shader);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -59,11 +67,16 @@ impl Fxaa {
             entries: &[
                 uniform.bind_group_entry(0),
                 input_texture.bind_group_entry(1),
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::Sampler(&sampler.sampler),
+                },
             ],
         });
 
         Self {
             uniform,
+            sampler,
             bind_group,
             pipeline,
         }
@@ -76,13 +89,18 @@ impl Fxaa {
                 FxaaUniform::bind_group_layout_entry(0),
                 BindGroupLayoutEntry {
                     binding: 1,
-                    // TODO: fine-grain control this?
                     visibility: ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: TextureViewDimension::D2,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -158,5 +176,21 @@ impl Fxaa {
 
             pass.draw(0..6, 0..1);
         }
+    }
+}
+
+impl ReloadableShaders for Fxaa {
+    fn available_shaders() -> &'static [&'static str] {
+        &["../shaders/fxaa.wgsl"]
+    }
+
+    fn reload(
+        &mut self,
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        index: usize,
+        shader_module: wgpu::ShaderModule,
+    ) {
+        self.pipeline = Fxaa::pipeline(device, config, &shader_module);
     }
 }
