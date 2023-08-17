@@ -188,7 +188,6 @@ impl ReloadableShaders for Fxaa {
         &mut self,
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
-        index: usize,
         shader_module: wgpu::ShaderModule,
     ) {
         self.pipeline = Fxaa::pipeline(device, config, &shader_module);

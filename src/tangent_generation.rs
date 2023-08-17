@@ -12,7 +12,7 @@ impl Geometry for TangentGenerator {
         self.indices.len() / 3
     }
 
-    fn num_vertices_of_face(&self, face: usize) -> usize {
+    fn num_vertices_of_face(&self, _face: usize) -> usize {
         3
     }
 

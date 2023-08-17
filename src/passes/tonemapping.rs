@@ -135,7 +135,6 @@ impl ReloadableShaders for Tonemapping {
         &mut self,
         device: &Device,
         config: &wgpu::SurfaceConfiguration,
-        index: usize,
         shader_module: wgpu::ShaderModule,
     ) {
         self.pipeline = Tonemapping::pipeline(device, config, &shader_module);

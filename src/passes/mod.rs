@@ -1,20 +1,20 @@
 mod compose;
 mod fxaa;
 mod skybox;
-mod ssao;
+// mod ssao;
 mod tonemapping;
 mod write_gbuffers;
-mod write_shadowmaps;
+// mod write_shadowmaps;
 
 pub use compose::Compose;
 pub use fxaa::Fxaa;
 pub use fxaa::FxaaParams;
 pub use skybox::Skybox;
-pub use ssao::SSAO;
+// pub use ssao::SSAO;
 pub use tonemapping::Tonemapping;
 use wgpu::Device;
 pub use write_gbuffers::WriteGBuffers;
-pub use write_shadowmaps::WriteShadowmaps;
+// pub use write_shadowmaps::WriteShadowmaps;
 
 // TODO: gut instinct says this could be done better
 pub trait ReloadableShaders {
@@ -27,7 +27,6 @@ pub trait ReloadableShaders {
         &mut self,
         device: &Device,
         config: &wgpu::SurfaceConfiguration,
-        index: usize,
         shader_module: wgpu::ShaderModule,
     );
 }

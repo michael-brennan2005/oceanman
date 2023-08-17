@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use glam::vec3;
 use half::f16;
 use rand::prelude::*;
@@ -9,12 +7,7 @@ use wgpu::{
     VertexState,
 };
 
-use crate::{
-    gbuffers::GBuffers,
-    loader::Scene,
-    resources::SceneUniform,
-    texture::{Sampler, Texture},
-};
+use crate::{gbuffers::GBuffers, loader::Scene, resources::SceneUniform, texture::Texture};
 
 use super::ReloadableShaders;
 
@@ -262,7 +255,6 @@ impl ReloadableShaders for SSAO {
         &mut self,
         device: &Device,
         config: &wgpu::SurfaceConfiguration,
-        index: usize,
         shader_module: wgpu::ShaderModule,
     ) {
         self.pipeline = SSAO::pipeline(device, &shader_module);

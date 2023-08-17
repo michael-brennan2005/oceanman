@@ -9,10 +9,6 @@ pub struct Camera {
     pub eye: Vec3,
     front: Vec3,
     up: Vec3,
-    aspect: f32,
-    fovy: f32,
-    znear: f32,
-    zfar: f32,
     pub pitch: f32,
     pub yaw: f32,
 }
@@ -23,10 +19,6 @@ impl Default for Camera {
             eye: vec3(-3.0, 3.0, -3.0),
             front: (vec3(0.0, 0.0, 0.0) - vec3(-3.0, 3.0, -3.0)).normalize(),
             up: vec3(0.0, 1.0, 0.0),
-            aspect: 1600.0 / 900.0,
-            fovy: 45.0_f32.to_radians(),
-            znear: 0.01,
-            zfar: 100.0,
             pitch: 0.0,
             yaw: 90.0,
         }
@@ -43,7 +35,7 @@ impl Camera {
 pub trait CameraController {
     fn input(&mut self, event: &WindowEvent);
     fn update(&mut self, camera: &mut Camera, dt: Duration);
-    fn ui(&mut self, camera: &mut Camera, ui: &mut egui::Ui) {}
+    fn ui(&mut self, camera: &mut Camera, ui: &mut egui::Ui);
 }
 
 pub struct FlyingCamera {

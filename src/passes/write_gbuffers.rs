@@ -156,8 +156,7 @@ impl ReloadableShaders for WriteGBuffers {
     fn reload(
         &mut self,
         device: &Device,
-        config: &wgpu::SurfaceConfiguration,
-        index: usize,
+        _config: &wgpu::SurfaceConfiguration,
         shader_module: wgpu::ShaderModule,
     ) {
         self.pipeline = WriteGBuffers::pipeline(device, &shader_module);

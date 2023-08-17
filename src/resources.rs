@@ -208,10 +208,6 @@ impl LightingUniform {
         }
     }
 
-    pub fn update(&self, queue: &wgpu::Queue, data: LightingUniformData) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[data]));
-    }
-
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Lighting uniform bind group layout"),
@@ -250,15 +246,6 @@ impl Default for MaterialUniformData {
     }
 }
 
-impl MaterialUniformData {
-    pub fn new(ambient: Vec3, diffuse: Vec3, specular: Vec3) -> Self {
-        MaterialUniformData {
-            ambient: (ambient, 1.0).into(),
-            diffuse: (diffuse, 1.0).into(),
-            specular: (specular, 1.0).into(),
-        }
-    }
-}
 pub struct Material {
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
@@ -464,10 +451,6 @@ impl Mesh {
             bind_group,
             material_index,
         }
-    }
-
-    pub fn update(&self, queue: &wgpu::Queue, data: MeshUniformData) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[data]));
     }
 
     pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {

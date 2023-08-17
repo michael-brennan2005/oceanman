@@ -20,7 +20,6 @@ mod shadowmap;
 mod spring;
 mod tangent_generation;
 mod texture;
-mod texture_debug;
 mod uniform;
 
 use renderer::Renderer;
@@ -66,7 +65,7 @@ pub async fn run() {
             ref event,
             window_id,
         } if window_id == window.id() => {
-            egui_state.on_event(&egui_context, event);
+            _ = egui_state.on_event(&egui_context, event);
             app.input(event);
             match event {
                 WindowEvent::CloseRequested

@@ -1,7 +1,4 @@
-use wgpu::{
-    BindGroupEntry, BindGroupLayoutEntry, ShaderStages, TextureFormat, TextureUsages,
-    TextureViewDimension,
-};
+use wgpu::{BindGroupEntry, TextureFormat, TextureUsages};
 
 pub struct Texture {
     pub sample_type: wgpu::TextureSampleType,
@@ -205,20 +202,6 @@ impl Texture {
             resource: wgpu::BindingResource::TextureView(&self.view),
         }
     }
-
-    pub fn bind_group_layout_entry(&self, i: u32) -> BindGroupLayoutEntry {
-        BindGroupLayoutEntry {
-            binding: i,
-            // TODO: fine-grain control this?
-            visibility: ShaderStages::FRAGMENT | ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Texture {
-                sample_type: self.sample_type,
-                view_dimension: TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        }
-    }
 }
 
 pub struct Sampler {
@@ -299,7 +282,7 @@ impl Sampler {
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: 0.0,
-            lod_max_clamp: 0.0,
+            lod_max_clamp: 16.0,
             compare: None,
             anisotropy_clamp: 1,
             border_color: None,

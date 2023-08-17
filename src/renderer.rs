@@ -195,7 +195,6 @@ impl Renderer {
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         pass: &mut T,
-        index: usize,
         path: U,
     ) -> Result<(), String> {
         let path = Path::new("src/").join(path.as_ref().strip_prefix("../").unwrap());
@@ -211,7 +210,7 @@ impl Renderer {
         match block_on(result) {
             Some(err) => Err(err.to_string()),
             None => {
-                pass.reload(device, config, index, new_shader);
+                pass.reload(device, config, new_shader);
                 Ok(())
             }
         }
@@ -235,7 +234,6 @@ impl Renderer {
                                 &self.device,
                                 &self.config,
                                 &mut self.$lowercase,
-                                i.0,
                                 *i.1,
                             );
                             self.egui_state.shader_error_message = match error_message {

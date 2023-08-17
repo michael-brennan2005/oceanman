@@ -1,10 +1,9 @@
-use std::{arch::x86_64::_XCR_XFEATURE_ENABLED_MASK, io::Read, path::Path};
+use std::path::Path;
 
-use ddsfile::{Caps, Caps2, D3DFormat, PixelFormat};
+use ddsfile::{Caps2, D3DFormat};
 use half::f16;
 use wgpu::{
-    Extent3d, ImageCopyTexture, TextureDescriptor, TextureUsages, TextureViewDescriptor,
-    TextureViewDimension,
+    Extent3d, TextureDescriptor, TextureUsages, TextureViewDescriptor, TextureViewDimension,
 };
 
 // TODO: this struct is identical to texture, do we wanna just have one texture type?
