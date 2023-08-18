@@ -14,6 +14,7 @@ cargo build
 ## Usage
 
 OceanMan requires a gltf file to render, as well as environment map, irradiance map, and prefilter map (all in .dds format). 
+
 ```bash
 oceanman scene.gltf environment.dds irradiance.dds prefilter.dds
 ```
