@@ -358,37 +358,12 @@ impl Renderer {
                     .text("Edge threshold min"),
                 );
                 ui.add(
-                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix, 0.0..=2.0)
-                        .step_by(1.0)
-                        .text("Subpix filtering"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix_trim, 0.0..=1.0)
-                        .step_by(1.0 / 8.0)
-                        .text("Subpix filtering trim"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.egui_state.fxaa_params.subpix_cap, 0.0..=1.0)
-                        .step_by(1.0 / 8.0)
-                        .text("Subpix filtering cap"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.egui_state.fxaa_params.search_steps, 0.0..=16.0)
-                        .step_by(1.0)
-                        .text("Search steps"),
-                );
-                ui.add(
                     egui::Slider::new(
                         &mut self.egui_state.fxaa_params.search_acceleration,
                         0.0..=4.0,
                     )
                     .step_by(1.0)
                     .text("Search acceleration"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut self.egui_state.fxaa_params.search_threshold, 0.0..=1.0)
-                        .step_by(1.0 / 16.0)
-                        .text("Search threshold"),
                 );
             })
         });

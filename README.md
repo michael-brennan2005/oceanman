@@ -1,6 +1,6 @@
 # OceanMan
 
-OceanMan is a real-time renderer focused on realism. It is developed using Rust, WebGPU, and wgpu. It is currently in version 0.3.
+OceanMan is a work-in-progress real-time renderer focused on realism. It is developed using Rust, WebGPU, and wgpu. It is currently in version 0.4.
 
 ## Installation.
 
@@ -19,15 +19,18 @@ oceanman scene.gltf environment.dds irradiance.dds prefilter.dds
 ```
 
 ## Features
-
+* Deferred rendering
 * Physically based shading (Cook-Torrance BRDF)
 * Image-based lighting
+* FXAA
+* Uncharted 2 Filmic tonemapping
+* Debug UI with reloadable shaders, camera & FXAA config, & loader
 * glTF scene support - loads in color, metal/roughness, and normal maps
-* Basic scene camera
 
 ## Images
 ![Damaged helmet](screenshots/one.png)
 ![Water bottle](screenshots/two.png)
+![Fighter helmet](screenshots/three.png)
 
 ## License
 

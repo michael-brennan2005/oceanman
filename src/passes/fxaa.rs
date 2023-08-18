@@ -17,12 +17,8 @@ use super::ReloadableShaders;
 pub struct FxaaParams {
     pub edge_threshold: f32,
     pub edge_threshold_min: f32,
-    pub subpix: f32,
-    pub subpix_trim: f32,
-    pub subpix_cap: f32,
-    pub search_steps: f32,
     pub search_acceleration: f32,
-    pub search_threshold: f32,
+    pub padding: [f32; 5],
 }
 bytemuck_impl!(FxaaParams);
 
@@ -31,12 +27,8 @@ impl Default for FxaaParams {
         FxaaParams {
             edge_threshold: 1.0 / 3.0,
             edge_threshold_min: 1.0 / 32.0,
-            subpix: 0.0,
-            subpix_trim: 1.0 / 2.0,
-            subpix_cap: 1.0,
-            search_steps: 5.0,
             search_acceleration: 1.0,
-            search_threshold: 1.0 / 4.0,
+            padding: [0.0, 0.0, 0.0, 0.0, 0.0],
         }
     }
 }
