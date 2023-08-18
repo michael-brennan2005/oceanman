@@ -28,7 +28,7 @@ fn vs_main(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
 }
 
 fn rgb_to_luma(rgb: vec3<f32>) -> f32 {
-	return rgb.y * (0.587 / 0.299) + rgb.x;
+	return sqrt(dot(rgb, vec3<f32>(0.299, 0.587, 0.114)));
 }
 
 fn fb_to_uv(pos: vec2<f32>) -> vec2<f32> {
@@ -36,8 +36,16 @@ fn fb_to_uv(pos: vec2<f32>) -> vec2<f32> {
 	return pos.xy * rcp_frame.xy;
 }
 
-fn ts(t: texture_2d<f32>, s: sampler, uv: vec2<f32>) -> vec4<f32> {
-	return textureSample(t, s, uv);
+fn ts(t: texture_2d<f32>, s: sampler, uv: vec2<f32>) -> vec3<f32> {
+	// convert from linear -> srgb
+	var color = textureSample(t, s, uv).rgb;
+	return pow(color, vec3<f32>(1.0 / 2.2));
+}
+
+fn ts_offset(t: texture_2d<f32>, s: sampler, uv: vec2<f32>, offset: vec2<i32>) -> vec3<f32> {
+	// convert from linear -> srgb
+	var coords = uv + vec2<f32>(offset) * vec2<f32>(1.0 / 1600.0, 1.0 / 900.0);
+	return ts(t, s, coords);	
 }
 
 @fragment
@@ -46,17 +54,16 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	// FXAA works in sRGB space but the -srgb textures were using do an automatic
 	// sRGB -> linear convert in the shader. So we need to sample the srgb texture
 	// and then do an linear -> sRGB conversion.
-	var color = textureSample(screen, screen_s, fb_to_uv(position.xy)).rgb;
-	color = pow(color, vec3<f32>(1.0 / 2.2));
+	var color = ts(screen, screen_s, fb_to_uv(position.xy));
 
 	// Where to apply AA
 	var luma = rgb_to_luma(color);
 
-	var rgbN = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0, -1)).rgb;
-	var rgbW = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 0)).rgb;
-	var rgbM = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0,  0)).rgb;
-	var rgbE = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(1,  0)).rgb;
-	var rgbS = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0,  1)).rgb;
+	var rgbN = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0, -1));
+	var rgbW = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 0));
+	var rgbM = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0,  0));
+	var rgbE = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(1,  0));
+	var rgbS = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(0,  1));
 	
 	var lumaN = rgb_to_luma(rgbN);
 	var lumaW = rgb_to_luma(rgbW);
@@ -69,10 +76,10 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	var range = range_max - range_min;
 	
 	// Estimate gradient and choose edge direction
-	var rgbNW = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 1)).rgb;
-	var rgbNE = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>( 1,-1)).rgb;
-	var rgbSW = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 1)).rgb;
-	var rgbSE = textureSample(screen, screen_s, fb_to_uv(position.xy), vec2<i32>( 1, 1)).rgb;
+	var rgbNW = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 1));
+	var rgbNE = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>( 1,-1));
+	var rgbSW = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>(-1, 1));
+	var rgbSE = ts_offset(screen, screen_s, fb_to_uv(position.xy), vec2<i32>( 1, 1));
 	
 	var lumaNW = rgb_to_luma(rgbNW);
 	var lumaNE = rgb_to_luma(rgbNE);
@@ -129,8 +136,8 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	var uv1 = current_uv - offset;
 	var uv2 = current_uv + offset;
 
-	var luma_end_1 = rgb_to_luma(textureSample(screen, screen_s, uv1).rgb);
-	var luma_end_2 = rgb_to_luma(textureSample(screen, screen_s, uv2).rgb);
+	var luma_end_1 = rgb_to_luma(ts(screen, screen_s, uv1));
+	var luma_end_2 = rgb_to_luma(ts(screen, screen_s, uv2));
 
 	luma_end_1 -= luma_local_average;
 	luma_end_2 -= luma_local_average;
@@ -151,12 +158,12 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	if (!reached_both) {
 		for (var i = 2u; i < 12u; i += 1u) {
 			if (!reached1) {
-				luma_end_1 = rgb_to_luma(ts(screen, screen_s, uv1).rgb);
+				luma_end_1 = rgb_to_luma(ts(screen, screen_s, uv1));
 				luma_end_1 = luma_end_1 - luma_local_average;
 			}
 
 			if (!reached2) {
-				luma_end_2 = rgb_to_luma(ts(screen, screen_s, uv2).rgb);
+				luma_end_2 = rgb_to_luma(ts(screen, screen_s, uv2));
 				luma_end_2 = luma_end_2 - luma_local_average;
 			}
 
@@ -209,7 +216,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	}
 
 	var final_color = ts(screen, screen_s, final_uv).rgb;
-	
+		
 	if (range < max(params.edge_threshold_min, range_max * params.edge_threshold)) {
 		// -srgb textures do an automatic linear -> sRGB at the end of the shader. We've been
 		// working in sRGB space, so let's convert to linear.
@@ -217,5 +224,7 @@ fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		return vec4<f32>(color, 1.0);
 	}
 
+	final_color = pow(final_color, vec3<f32>(2.2));
 	return vec4<f32>(final_color, 1.0);
 }
+
